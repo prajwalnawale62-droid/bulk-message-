@@ -67,7 +67,7 @@ import {
 } from 'recharts';
 
 // --- Types ---
-type View = 'landing' | 'dashboard' | 'contacts' | 'messaging' | 'history' | 'plans' | 'settings' | 'admin' | 'login' | 'pricing' | 'contact';
+type View = 'landing' | 'dashboard' | 'contacts' | 'messaging' | 'history' | 'plans' | 'settings' | 'admin' | 'login' | 'pricing' | 'contact' | 'guide';
 
 // --- Constants ---
 const THEME = {
@@ -79,6 +79,54 @@ const THEME = {
 };
 
 // --- Components ---
+
+const TechtaireLogo = ({ className = "w-10 h-10" }: { className?: string }) => (
+  <div className={cn("relative flex items-center justify-center", className)}>
+    <div className="absolute inset-0 bg-gradient-to-br from-royal-purple via-amethyst to-soft-lavender rounded-xl blur-sm opacity-50 animate-pulse" />
+    <div className="relative w-full h-full bg-deep-night rounded-xl border border-white/10 flex items-center justify-center overflow-hidden group">
+      <div className="absolute inset-0 bg-gradient-to-br from-royal-purple/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-white relative z-10">
+        <path d="M4 6H20M4 12H14M4 18H10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M17 12L21 16L17 20" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="18" cy="6" r="2" fill="currentColor" />
+      </svg>
+    </div>
+  </div>
+);
+
+const TrialTimer = ({ expiry }: { expiry: string }) => {
+  const [timeLeft, setTimeLeft] = useState<number>(0);
+
+  useEffect(() => {
+    const calculateTime = () => {
+      const diff = new Date(expiry).getTime() - new Date().getTime();
+      setTimeLeft(Math.max(0, Math.floor(diff / 1000)));
+    };
+
+    calculateTime();
+    const interval = setInterval(calculateTime, 1000);
+    return () => clearInterval(interval);
+  }, [expiry]);
+
+  if (timeLeft <= 0) return (
+    <div className="px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-full flex items-center gap-2">
+      <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+      <span className="text-[10px] font-black text-red-400 uppercase tracking-widest">Expired</span>
+    </div>
+  );
+
+  const minutes = Math.floor(timeLeft / 60);
+  const seconds = timeLeft % 60;
+
+  return (
+    <div className="px-3 py-1 bg-amethyst/10 border border-amethyst/20 rounded-full flex items-center gap-2">
+      <div className="w-1.5 h-1.5 bg-amethyst rounded-full animate-pulse" />
+      <span className="text-[10px] font-black text-amethyst uppercase tracking-widest">
+        {minutes}:{seconds.toString().padStart(2, '0')} Left
+      </span>
+    </div>
+  );
+};
 
 const CustomCursor = () => {
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -248,7 +296,7 @@ const IntroAnimation = ({ onComplete }: { onComplete: () => void }) => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
             >
-              BulkMsg Pro
+              Techtaire
             </motion.h1>
           </motion.div>
         )}
@@ -370,8 +418,8 @@ const PricingCard = ({ plan, isPremium = false, onSelect }: { plan: any, isPremi
       )}
       <h3 className="text-xl font-bold text-soft-lavender/60 mb-2 uppercase tracking-widest">{plan.name}</h3>
       <div className="flex items-baseline gap-2 mb-8">
-        <span className="text-5xl font-black text-white">₹{plan.price}</span>
-        <span className="text-soft-lavender/40">/month</span>
+        <span className="text-5xl font-black text-white">{plan.price === '0' ? 'Free' : `₹${plan.price}`}</span>
+        {plan.amount > 1 && <span className="text-soft-lavender/40">/month</span>}
       </div>
       
       <div className="space-y-4 mb-10 flex-1">
@@ -431,17 +479,56 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [logoClicks, setLogoClicks] = useState(0);
   const isAdmin = user?.email === 'prajwalnawale3040@gmail.com';
+  const isExpired = profile?.plan === 'free_trial' && profile?.trial_expiry && new Date(profile.trial_expiry) < new Date();
+
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<any>(null);
 
   const handlePayment = async (plan: any) => {
-    if (plan.amount === 0) {
-      alert("You are already on the free plan!");
+    if (!user) {
+      setView('login');
       return;
     }
+    if (plan.amount === 0) {
+      if (confirm("Activate 1-Minute Free Trial?")) {
+        activateFreeTrial();
+      }
+      return;
+    }
+    setSelectedPlan(plan);
+    setShowPaymentModal(true);
+  };
 
+  const activateFreeTrial = async () => {
+    if (!user) return;
+    try {
+      const expiry = new Date();
+      expiry.setMinutes(expiry.getMinutes() + 1); // 1 minute expiry
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ 
+          plan: 'free_trial',
+          credits: 100,
+          trial_expiry: expiry.toISOString()
+        })
+        .eq('id', user.id);
+      
+      if (error) throw error;
+      
+      alert("Free Trial Activated! You have 1 minute of demo access.");
+      window.location.reload();
+    } catch (err: any) {
+      alert("Failed to activate free trial: " + err.message);
+    }
+  };
+
+  const processRazorpay = async () => {
+    if (!selectedPlan || !user) return;
     try {
       const response = await axios.post('/api/payment/create-order', {
-        amount: plan.amount,
-        planName: plan.name,
+        amount: selectedPlan.amount,
+        planName: selectedPlan.name,
         userId: user.id
       });
 
@@ -451,12 +538,12 @@ export default function App() {
         key,
         amount,
         currency,
-        name: "BulkMsg Pro",
-        description: `Upgrade to ${plan.name} Plan`,
+        name: "Techtaire",
+        description: `Upgrade to ${selectedPlan.name} Plan`,
         order_id: orderId,
         handler: function (response: any) {
           alert("Payment Successful! Your subscription will be activated shortly.");
-          // The webhook will handle the activation, but we can refresh profile here too
+          setShowPaymentModal(false);
           setTimeout(() => window.location.reload(), 2000);
         },
         prefill: {
@@ -488,18 +575,37 @@ export default function App() {
       return;
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (!session) setLoading(false);
-    });
+    // Initial session check
+    const checkSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setUser(session?.user ?? null);
+        if (session) {
+          setView('dashboard');
+        }
+        setLoading(false); // Always set loading to false after session check
+      } catch (err) {
+        console.error("Session check error:", err);
+        setLoading(false);
+      }
+    };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    checkSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("Auth event:", event);
       setUser(session?.user ?? null);
+      
       if (!session) {
         setProfile(null);
         setView('landing');
+        setLoading(false);
       } else {
-        setView('dashboard');
+        // If we just signed in or session was found, go to dashboard
+        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+          setView('dashboard');
+          setLoading(false); // Ensure loading is false when session is found
+        }
       }
     });
 
@@ -519,13 +625,17 @@ export default function App() {
           if (data) {
             setProfile(data);
           } else if (!error || error.code === 'PGRST116') { // PGRST116 is "no rows returned"
+            const trialExpiry = new Date();
+            trialExpiry.setDate(trialExpiry.getDate() + 7);
+            
             const { data: newProfile, error: insertError } = await supabase
               .from('profiles')
               .insert([{ 
                 id: user.id, 
                 email: user.email, 
-                plan: 'free', 
-                credits: 100,
+                plan: 'trial', 
+                credits: 50,
+                trial_expiry: trialExpiry.toISOString(),
                 created_at: new Date().toISOString()
               }])
               .select()
@@ -681,27 +791,26 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
             isSidebarOpen ? "w-72" : "w-24"
           )}>
             <div className="p-8 flex items-center gap-4 mb-12">
-              <div className="w-12 h-12 bg-royal-purple rounded-2xl flex items-center justify-center shadow-lg shadow-royal-purple/20">
-                <Send size={24} className="text-white" />
-              </div>
+              <TechtaireLogo className="w-12 h-12" />
               {isSidebarOpen && (
                 <motion.span 
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   className="text-2xl font-black glow-text tracking-tighter"
                 >
-                  BulkMsg
+                  Techtaire
                 </motion.span>
               )}
             </div>
 
             <nav className="px-6 space-y-3">
               <SidebarItem icon={LayoutDashboard} label="Dashboard" active={view === 'dashboard'} onClick={() => setView('dashboard')} isOpen={isSidebarOpen} />
-              <SidebarItem icon={Users} label="Contacts" active={view === 'contacts'} onClick={() => setView('contacts')} isOpen={isSidebarOpen} />
-              <SidebarItem icon={SendHorizontal} label="Messaging" active={view === 'messaging'} onClick={() => setView('messaging')} isOpen={isSidebarOpen} />
-              <SidebarItem icon={History} label="History" active={view === 'history'} onClick={() => setView('history')} isOpen={isSidebarOpen} />
+              <SidebarItem icon={Users} label="Contacts" active={view === 'contacts'} onClick={() => setView('contacts')} isOpen={isSidebarOpen} disabled={isExpired} />
+              <SidebarItem icon={SendHorizontal} label="Messaging" active={view === 'messaging'} onClick={() => setView('messaging')} isOpen={isSidebarOpen} disabled={isExpired} />
+              <SidebarItem icon={History} label="History" active={view === 'history'} onClick={() => setView('history')} isOpen={isSidebarOpen} disabled={isExpired} />
+              <SidebarItem icon={LampIcon as any} label="Guide" active={view === 'guide'} onClick={() => setView('guide')} isOpen={isSidebarOpen} />
               <SidebarItem icon={CreditCard} label="Plans" active={view === 'plans'} onClick={() => setView('plans')} isOpen={isSidebarOpen} />
-              <SidebarItem icon={Settings} label="Settings" active={view === 'settings'} onClick={() => setView('settings')} isOpen={isSidebarOpen} />
+              <SidebarItem icon={Settings} label="Settings" active={view === 'settings'} onClick={() => setView('settings')} isOpen={isSidebarOpen} disabled={isExpired} />
               {isAdmin && <SidebarItem icon={Shield} label="Admin" active={view === 'admin'} onClick={() => setView('admin')} isOpen={isSidebarOpen} />}
             </nav>
 
@@ -733,10 +842,13 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
               </div>
 
               <div className="flex items-center gap-8">
+                {profile?.plan === 'free_trial' && profile?.trial_expiry && (
+                  <TrialTimer expiry={profile.trial_expiry} />
+                )}
                 <div className="flex flex-col items-end">
                   <span className="text-sm font-bold text-white">{user?.email}</span>
                   <span className="text-[10px] text-amethyst font-black uppercase tracking-widest">
-                    {profile?.plan || 'Free'} Plan • {profile?.credits?.toLocaleString() || '0'} Credits
+                    {profile?.plan || 'Free'} Plan
                   </span>
                 </div>
                 <div className="w-12 h-12 rounded-2xl bg-royal-purple/20 border border-royal-purple/30 flex items-center justify-center shadow-inner">
@@ -754,10 +866,11 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
                   exit={{ opacity: 0, scale: 1.02, y: -10 }}
                   transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                 >
-                  {view === 'dashboard' && <DashboardView />}
-                  {view === 'contacts' && <ContactsView />}
-                  {view === 'messaging' && <MessagingView profile={profile} />}
-                  {view === 'history' && <HistoryView />}
+                  {view === 'dashboard' && <DashboardView user={user} profile={profile} setView={setView} />}
+                  {view === 'contacts' && <ContactsView user={user} />}
+                  {view === 'messaging' && <MessagingView profile={profile} user={user} />}
+                  {view === 'history' && <HistoryView user={user} />}
+                  {view === 'guide' && <GuideView setView={setView} />}
                   {view === 'plans' && <PricingPage setView={setView} isDashboard onSelect={handlePayment} />}
                   {view === 'settings' && <SettingsView profile={profile} />}
                   {view === 'admin' && <AdminView user={user} />}
@@ -767,18 +880,125 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
           </main>
         </div>
       )}
+
+      {showPaymentModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setShowPaymentModal(false)} />
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="relative w-full max-w-lg glass-panel p-10 overflow-hidden"
+          >
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-royal-purple via-amethyst to-royal-purple" />
+            
+            <div className="flex justify-between items-start mb-8">
+              <div>
+                <h3 className="text-3xl font-black text-white tracking-tight mb-2">Complete Payment</h3>
+                <p className="text-soft-lavender/40">Upgrade to {selectedPlan?.name} Plan</p>
+              </div>
+              <div className="text-right">
+                <p className="text-3xl font-black text-amethyst">₹{selectedPlan?.price}</p>
+                <p className="text-[10px] text-soft-lavender/20 uppercase tracking-widest">Secure Transaction</p>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="p-6 bg-white/5 rounded-2xl border border-white/10 space-y-6">
+                <h4 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
+                  <Smartphone size={16} className="text-amethyst" />
+                  Direct UPI Payment
+                </h4>
+                
+                <div className="flex justify-center">
+                  <div className="p-4 bg-white rounded-2xl">
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=upi://pay?pa=9551522030-3@ibl%26pn=Techtaire%26am=${selectedPlan?.price}%26cu=INR`} 
+                      alt="UPI QR Code" 
+                      className="w-32 h-32"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <a 
+                    href={`upi://pay?pa=9551522030-3@ibl&pn=Techtaire&am=${selectedPlan?.price}&cu=INR`}
+                    className="p-4 bg-white/5 border border-white/10 rounded-xl flex flex-col items-center gap-2 hover:bg-white/10 transition-all group"
+                  >
+                    <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center p-2">
+                      <img src="https://upload.wikimedia.org/wikipedia/commons/e/e1/Google_Pay_Logo.svg" alt="GPay" className="w-full h-full" />
+                    </div>
+                    <span className="text-[10px] font-black text-white uppercase tracking-widest">Google Pay</span>
+                  </a>
+                  <a 
+                    href={`upi://pay?pa=9551522030-3@ibl&pn=Techtaire&am=${selectedPlan?.price}&cu=INR`}
+                    className="p-4 bg-white/5 border border-white/10 rounded-xl flex flex-col items-center gap-2 hover:bg-white/10 transition-all group"
+                  >
+                    <div className="w-10 h-10 bg-[#5f259f] rounded-full flex items-center justify-center p-2">
+                      <img src="https://upload.wikimedia.org/wikipedia/commons/7/71/PhonePe_Logo.svg" alt="PhonePe" className="w-full h-full invert" />
+                    </div>
+                    <span className="text-[10px] font-black text-white uppercase tracking-widest">PhonePe</span>
+                  </a>
+                </div>
+
+                <div className="p-4 bg-black/30 rounded-xl border border-white/5 flex justify-between items-center">
+                  <div>
+                    <p className="text-[10px] text-soft-lavender/40 uppercase mb-1">UPI ID</p>
+                    <p className="text-sm font-bold text-white select-all">9551522030-3@ibl</p>
+                  </div>
+                  <CheckCircle2 size={16} className="text-emerald-500" />
+                </div>
+                
+                <p className="text-[10px] text-soft-lavender/40 text-center italic">
+                  * After payment, your plan will be activated automatically within minutes.
+                </p>
+              </div>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-white/5"></div>
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-deep-night px-4 text-soft-lavender/20 font-black tracking-widest">OR</span>
+                </div>
+              </div>
+
+              <button 
+                onClick={processRazorpay}
+                className="w-full py-5 btn-premium flex items-center justify-center gap-3 group"
+              >
+                <CreditCard size={20} className="group-hover:rotate-12 transition-transform" />
+                <span>Pay via Razorpay / Cards</span>
+              </button>
+
+              <div className="pt-4 border-t border-white/5">
+                <p className="text-[10px] text-soft-lavender/40 text-center leading-relaxed">
+                  After direct UPI payment, please share the screenshot with our support team or enter the UTR number in settings for auto-verification.
+                </p>
+              </div>
+            </div>
+
+            <button 
+              onClick={() => setShowPaymentModal(false)}
+              className="absolute top-6 right-6 text-soft-lavender/20 hover:text-white transition-colors"
+            >
+              <X size={24} />
+            </button>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }
 
-const SidebarItem = ({ icon: Icon, label, active, onClick, isOpen }: { icon: any, label: string, active: boolean, onClick: () => void, isOpen: boolean }) => (
+const SidebarItem = ({ icon: Icon, label, active, onClick, isOpen, disabled }: { icon: any, label: string, active: boolean, onClick: () => void, isOpen: boolean, disabled?: boolean }) => (
   <button
-    onClick={onClick}
+    onClick={disabled ? () => alert("Your free trial has expired. Please upgrade to continue.") : onClick}
     className={cn(
       "w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all duration-500 group relative",
       active 
         ? "bg-royal-purple text-white shadow-lg shadow-royal-purple/20" 
-        : "text-soft-lavender/40 hover:bg-white/5 hover:text-white"
+        : "text-soft-lavender/40 hover:bg-white/5 hover:text-white",
+      disabled && "opacity-30 grayscale cursor-not-allowed"
     )}
   >
     <Icon size={22} className={cn(
@@ -800,16 +1020,15 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, isOpen }: { icon: any
 const LandingPage = ({ setView, onSelect }: { setView: (v: View) => void, onSelect: (plan: any) => void }) => {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [showDemo, setShowDemo] = useState(false);
 
   return (
     <div className={cn("relative transition-colors duration-1000", isDarkMode ? "bg-deep-night" : "bg-[#1a0b2e]")}>
       {/* Navbar */}
       <nav className="fixed top-0 left-0 right-0 h-24 px-10 flex items-center justify-between z-[60] bg-transparent backdrop-blur-sm">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-royal-purple rounded-xl flex items-center justify-center shadow-lg shadow-royal-purple/20">
-            <Send size={20} className="text-white" />
-          </div>
-          <span className="text-2xl font-black text-white tracking-tighter">BulkMsg</span>
+          <TechtaireLogo />
+          <span className="text-2xl font-black text-white tracking-tighter">Techtaire</span>
         </div>
 
         <div className="hidden md:flex items-center gap-10">
@@ -888,7 +1107,10 @@ const LandingPage = ({ setView, onSelect }: { setView: (v: View) => void, onSele
               Get Started Free
               <ArrowRight className="inline-block ml-2 group-hover:translate-x-1 transition-transform" size={20} />
             </button>
-            <button className="px-8 py-4 rounded-2xl font-bold text-white bg-white/5 border border-white/10 hover:bg-white/10 transition-all">
+            <button 
+              onClick={() => setShowDemo(true)}
+              className="px-8 py-4 rounded-2xl font-bold text-white bg-white/5 border border-white/10 hover:bg-white/10 transition-all"
+            >
               Watch Demo
             </button>
           </motion.div>
@@ -985,7 +1207,7 @@ const LandingPage = ({ setView, onSelect }: { setView: (v: View) => void, onSele
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-20">
             <h2 className="text-5xl font-black text-white mb-6 tracking-tight">Loved by Marketers</h2>
-            <p className="text-soft-lavender/60">Join thousands of businesses scaling their growth with BulkMsg Pro.</p>
+            <p className="text-soft-lavender/60">Join thousands of businesses scaling their growth with Techtaire.</p>
           </div>
 
           <div className="flex flex-wrap justify-center gap-8">
@@ -1043,7 +1265,7 @@ const LandingPage = ({ setView, onSelect }: { setView: (v: View) => void, onSele
               </div>
               <div className="flex-1 p-6 space-y-4 overflow-y-auto">
                 <div className="bg-white/5 p-4 rounded-2xl rounded-tl-none text-sm text-soft-lavender/80">
-                  Hello! I'm your BulkMsg AI assistant. How can I help you today?
+                  Hello! I'm your Techtaire AI assistant. How can I help you today?
                 </div>
                 <div className="bg-royal-purple/20 p-4 rounded-2xl rounded-tr-none text-sm text-white ml-8">
                   What are the pricing plans?
@@ -1076,6 +1298,100 @@ const LandingPage = ({ setView, onSelect }: { setView: (v: View) => void, onSele
         </motion.button>
       </div>
 
+      {/* Demo Modal */}
+      <AnimatePresence>
+        {showDemo && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/90 backdrop-blur-xl" 
+              onClick={() => setShowDemo(false)} 
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-5xl aspect-video glass-panel overflow-hidden shadow-[0_0_100px_rgba(93,63,211,0.3)]"
+            >
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-royal-purple via-amethyst to-royal-purple" />
+              <div className="absolute top-6 right-6 z-10">
+                <button 
+                  onClick={() => setShowDemo(false)}
+                  className="w-10 h-10 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-royal-purple transition-all"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="w-full h-full bg-black flex items-center justify-center relative group">
+                <div className="absolute inset-0 bg-gradient-to-br from-royal-purple/20 to-transparent pointer-events-none" />
+                
+                <div className="text-center z-10">
+                  <motion.div 
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ delay: 0.2 }}
+                    className="w-24 h-24 bg-royal-purple rounded-full flex items-center justify-center mx-auto mb-8 shadow-[0_0_50px_rgba(93,63,211,0.5)] cursor-pointer hover:scale-110 transition-transform"
+                  >
+                    <Zap size={48} className="text-white fill-white ml-2" />
+                  </motion.div>
+                  <motion.h3 
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.3 }}
+                    className="text-4xl font-black text-white mb-4 tracking-tight"
+                  >
+                    Experience Techtaire
+                  </motion.h3>
+                  <motion.p 
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.4 }}
+                    className="text-soft-lavender/60 text-lg max-w-md mx-auto"
+                  >
+                    Watch how we transform your WhatsApp marketing with AI-powered automation.
+                  </motion.p>
+                </div>
+
+                {/* Video UI Overlays */}
+                <div className="absolute top-8 left-8 flex items-center gap-3">
+                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                  <span className="text-xs font-black text-white uppercase tracking-widest">Live Demo</span>
+                </div>
+                
+                <div className="absolute bottom-0 left-0 w-full p-10 bg-gradient-to-t from-black to-transparent">
+                  <div className="flex flex-col gap-6">
+                    <div className="flex items-center justify-between text-[10px] font-black text-soft-lavender/40 uppercase tracking-widest">
+                      <span>Automating Campaign...</span>
+                      <span>72% Complete</span>
+                    </div>
+                    <div className="flex items-center gap-6">
+                      <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                        <motion.div 
+                          className="h-full bg-gradient-to-r from-royal-purple to-amethyst"
+                          animate={{ width: ['0%', '72%', '100%'] }}
+                          transition={{ duration: 15, repeat: Infinity, ease: 'linear' }}
+                        />
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="flex -space-x-2">
+                          {[1, 2, 3].map(i => (
+                            <div key={i} className="w-6 h-6 rounded-full border-2 border-black bg-white/10" />
+                          ))}
+                        </div>
+                        <span className="text-xs font-mono text-soft-lavender/40">1.2k Watching</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Footer */}
       <footer className="py-20 px-10 border-t border-white/5 bg-black/50 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
@@ -1084,7 +1400,7 @@ const LandingPage = ({ setView, onSelect }: { setView: (v: View) => void, onSele
               <div className="w-10 h-10 bg-royal-purple rounded-xl flex items-center justify-center">
                 <Send size={20} className="text-white" />
               </div>
-              <span className="text-2xl font-black text-white tracking-tighter">BulkMsg</span>
+              <span className="text-2xl font-black text-white tracking-tighter">Techtaire</span>
             </div>
             <p className="text-soft-lavender/40 text-sm leading-relaxed">
               The world's most magical WhatsApp bulk messaging platform.
@@ -1118,7 +1434,7 @@ const LandingPage = ({ setView, onSelect }: { setView: (v: View) => void, onSele
           </div>
         </div>
         <div className="max-w-7xl mx-auto mt-20 pt-10 border-t border-white/5 text-center text-soft-lavender/20 text-xs">
-          © 2026 BulkMsg Pro. All rights reserved. Made with 💜 for marketers.
+          © 2026 Techtaire. All rights reserved. Made with 💜 for marketers.
         </div>
       </footer>
     </div>
@@ -1219,9 +1535,13 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
         if (error) throw error;
         alert("Check your email for the confirmation link!");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        setView('dashboard');
+        // The onAuthStateChange listener in App will handle the view change, 
+        // but we set it here as well for immediate feedback.
+        if (data.session) {
+          setView('dashboard');
+        }
       }
     } catch (err: any) {
       alert(err.message);
@@ -1250,7 +1570,7 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
               {isSignUp ? 'Join the Pack' : 'Welcome Back'}
             </h2>
             <p className="text-soft-lavender/40">
-              {isSignUp ? 'Start your journey with BulkMsg Pro today.' : 'The bear is waiting for you to light up the screen.'}
+              {isSignUp ? 'Start your journey with Techtaire today.' : 'The bear is waiting for you to light up the screen.'}
             </p>
           </div>
         </div>
@@ -1361,9 +1681,10 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
 
 const PricingPage = ({ setView, isDashboard = false, onSelect }: { setView: (v: View) => void, isDashboard?: boolean, onSelect: (plan: any) => void }) => {
   const plans = [
-    { name: 'Starter', price: '0', amount: 0, features: ['100 Messages/day', 'Basic Analytics', 'Standard Support', 'Manual Import'] },
-    { name: 'Professional', price: '1,499', amount: 1499, features: ['5,000 Messages/day', 'Advanced Analytics', 'Priority Support', 'API Access'] },
-    { name: 'Enterprise', price: '4,999', amount: 4999, features: ['Unlimited Messages', 'Custom Integration', 'Dedicated Manager', 'White Label'] }
+    { name: 'Free Trial', price: '0', amount: 0, features: ['1 Minute Access', 'Demo Messaging', 'Basic AI', 'Limited Contacts'], isDemo: true },
+    { name: 'Demo', price: '1', amount: 1, features: ['Full Access for 1 Day', 'Priority Support', 'AI Enhancement', 'Unlimited Contacts'], isDemo: true },
+    { name: 'Monthly', price: '2,499', amount: 2499, features: ['Unlimited Messages', 'AI Enhancement', 'Priority Support', 'File Attachments', 'Advanced Analytics'] },
+    { name: 'Yearly', price: '17,999', amount: 17999, features: ['Everything in Monthly', '2 Months Free', 'Dedicated Account Manager', 'Custom API Integration', 'White Label Reports'] }
   ];
 
   return (
@@ -1376,9 +1697,9 @@ const PricingPage = ({ setView, isDashboard = false, onSelect }: { setView: (v: 
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-7xl mx-auto">
           {plans.map((plan, i) => (
-            <PricingCard key={i} plan={plan} isPremium={i === 1} onSelect={onSelect} />
+            <PricingCard key={i} plan={plan} isPremium={i >= 2} onSelect={onSelect} />
           ))}
         </div>
       </div>
@@ -1484,56 +1805,205 @@ const ContactPage = () => {
 
 // --- Sub-Views ---
 
-function ContactsView() {
+function ContactsView({ user }: { user: any }) {
   const [contacts, setContacts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [isBatch, setIsBatch] = useState(false);
+  const [editingContact, setEditingContact] = useState<any>(null);
+  const [newContact, setNewContact] = useState({ name: '', whatsapp_number: '', batch: '', course: '' });
 
   useEffect(() => {
-    fetchContacts();
-  }, []);
+    if (user) fetchContacts();
+  }, [user]);
 
   const fetchContacts = async () => {
+    if (!user) return;
     setLoading(true);
     const { data, error } = await supabase
       .from('contacts')
       .select('*')
+      .eq('user_id', user.id)
       .order('created_at', { ascending: false });
     
     if (data) setContacts(data);
     setLoading(false);
   };
 
+  const handleDeleteContact = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this contact?")) return;
+    const { error } = await supabase.from('contacts').delete().eq('id', id);
+    if (error) {
+      console.error("Delete Error:", error);
+      alert("Failed to delete contact: " + error.message);
+    } else {
+      fetchContacts();
+    }
+  };
+
+  const handleEditContact = (contact: any) => {
+    setEditingContact(contact);
+    setIsBatch(false);
+    setNewContact({
+      name: contact.name,
+      whatsapp_number: contact.whatsapp_number,
+      batch: contact.batch || '',
+      course: contact.course || ''
+    });
+    setShowAddModal(true);
+  };
+
+  const handleAddContact = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    if (editingContact) {
+      const { error } = await supabase
+        .from('contacts')
+        .update({
+          name: newContact.name,
+          whatsapp_number: newContact.whatsapp_number.replace(/\D/g, ''),
+          batch: newContact.batch,
+          course: newContact.course
+        })
+        .eq('id', editingContact.id);
+
+      if (error) {
+        alert(error.message);
+      } else {
+        setShowAddModal(false);
+        setEditingContact(null);
+        setNewContact({ name: '', whatsapp_number: '', batch: '', course: '' });
+        fetchContacts();
+      }
+      return;
+    }
+
+    if (isBatch) {
+      // Bulk insert for batch
+      const numbers = newContact.whatsapp_number.split(/[\n,]+/).map(n => n.trim().replace(/\D/g, '')).filter(n => n.length >= 10);
+      if (numbers.length === 0) {
+        alert("Please enter at least one valid WhatsApp number.");
+        return;
+      }
+
+      const contactsToInsert = numbers.map(num => ({
+        user_id: user.id,
+        name: newContact.name, // Using batch name as contact name or we could use "Student"
+        whatsapp_number: num,
+        batch: newContact.name,
+        course: newContact.course,
+        status: 'active'
+      }));
+
+      const { error } = await supabase.from('contacts').insert(contactsToInsert);
+      if (error) {
+        console.error("Add Batch Error:", error);
+        alert(error.message);
+      } else {
+        setShowAddModal(false);
+        setNewContact({ name: '', whatsapp_number: '', batch: '', course: '' });
+        fetchContacts();
+      }
+    } else {
+      const contactToInsert = {
+        ...newContact,
+        user_id: user.id,
+        whatsapp_number: newContact.whatsapp_number.replace(/\D/g, ''),
+        status: 'active'
+      };
+
+      const { error } = await supabase.from('contacts').insert([contactToInsert]);
+      if (error) {
+        console.error("Add Contact Error:", error);
+        alert(error.message);
+      } else {
+        setShowAddModal(false);
+        setNewContact({ name: '', whatsapp_number: '', batch: '', course: '' });
+        fetchContacts();
+      }
+    }
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !user) return;
 
     const reader = new FileReader();
     reader.onload = async (evt) => {
-      const bstr = evt.target?.result;
-      const wb = XLSX.read(bstr, { type: 'binary' });
-      const wsname = wb.SheetNames[0];
-      const ws = wb.Sheets[wsname];
-      const data = XLSX.utils.sheet_to_json(ws);
+      try {
+        const dataBuffer = evt.target?.result;
+        const wb = XLSX.read(dataBuffer, { type: 'array' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
 
-      // Map and insert
-      const formattedData = data.map((row: any) => ({
-        name: row.Name || row.name || 'Unknown',
-        whatsapp_number: String(row.Number || row.number || row.Phone || row.phone || '').replace(/\D/g, ''),
-        batch: row.Batch || row.batch || '',
-        course: row.Course || row.course || '',
-        status: 'active'
-      })).filter(c => c.whatsapp_number);
+        console.log("Excel Data Parsed:", data);
 
-      const { error } = await supabase.from('contacts').insert(formattedData);
-      if (error) alert(error.message);
-      else {
-        alert(`Successfully imported ${formattedData.length} contacts`);
-        fetchContacts();
+        if (data.length === 0) {
+          alert("No data found in Excel file.");
+          return;
+        }
+
+        // Map and insert
+        const formattedData = data.map((row: any) => {
+          // Find name column
+          const name = row.Name || row.name || row.StudentName || row.Student || row['Student Name'] || row['Full Name'] || row.FullName || 'Unknown';
+          
+          // Find number column
+          const rawNumber = row.Number || row.number || row.Phone || row.phone || row.WhatsApp || row['WhatsApp Number'] || row['Phone Number'] || row.Contact || row.Mobile || '';
+          const whatsapp_number = String(rawNumber).replace(/\D/g, '');
+          
+          // Find batch/course
+          const batch = row.Batch || row.batch || row.Class || row.class || row.Group || row.group || '';
+          const course = row.Course || row.course || row.Subject || row.subject || '';
+
+          return {
+            user_id: user.id,
+            name,
+            whatsapp_number,
+            batch,
+            course,
+            status: 'active'
+          };
+        }).filter(c => c.whatsapp_number && c.whatsapp_number.length >= 10);
+
+        console.log("Formatted Data for Insert:", formattedData);
+
+        if (formattedData.length === 0) {
+          alert("No valid contacts found. Please ensure the Excel has 'Name' and 'Number' columns. (Numbers must be at least 10 digits)");
+          return;
+        }
+
+        const { error } = await supabase.from('contacts').insert(formattedData);
+        if (error) {
+          console.error("Import Error:", error);
+          alert("Database Error: " + error.message);
+        } else {
+          alert(`Successfully imported ${formattedData.length} contacts`);
+          fetchContacts();
+        }
+      } catch (err: any) {
+        console.error("Excel Parsing Error:", err);
+        alert("Failed to parse Excel file. Please ensure it's a valid .xlsx or .csv file.");
       }
     };
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
+
+  const handleDeleteAll = async () => {
+    if (!confirm("Are you sure you want to delete ALL contacts? This cannot be undone.")) return;
+    const { error } = await supabase.from('contacts').delete().eq('user_id', user.id);
+    if (error) alert(error.message);
+    else fetchContacts();
+  };
+
+  const filteredContacts = contacts.filter(c => 
+    c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    c.whatsapp_number.includes(searchTerm) ||
+    c.batch?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="space-y-8">
@@ -1554,9 +2024,26 @@ function ContactsView() {
             <span>Import Excel</span>
             <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={handleFileUpload} />
           </label>
-          <button className="px-6 py-3 bg-white/5 border border-white/10 rounded-2xl font-bold text-white hover:bg-white/10 transition-all flex items-center gap-2">
+          <button 
+            onClick={() => { setIsBatch(false); setShowAddModal(true); }}
+            className="px-6 py-3 bg-white/5 border border-white/10 rounded-2xl font-bold text-white hover:bg-white/10 transition-all flex items-center gap-2"
+          >
             <Plus size={20} />
             <span>Add Contact</span>
+          </button>
+          <button 
+            onClick={() => { setIsBatch(true); setShowAddModal(true); }}
+            className="px-6 py-3 bg-white/5 border border-white/10 rounded-2xl font-bold text-white hover:bg-white/10 transition-all flex items-center gap-2"
+          >
+            <Database size={20} />
+            <span>Add Batch</span>
+          </button>
+          <button 
+            onClick={handleDeleteAll}
+            className="px-6 py-3 bg-red-500/10 border border-red-500/20 rounded-2xl font-bold text-red-400 hover:bg-red-500/20 transition-all flex items-center gap-2"
+          >
+            <Trash2 size={20} />
+            <span>Delete All</span>
           </button>
         </div>
       </div>
@@ -1580,17 +2067,14 @@ function ContactsView() {
                   <p className="text-soft-lavender/40">Loading contacts...</p>
                 </td>
               </tr>
-            ) : contacts.length === 0 ? (
+            ) : filteredContacts.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-6 py-20 text-center">
-                  <Users className="text-soft-lavender/10 mx-auto mb-4" size={48} />
-                  <p className="text-soft-lavender/40">No contacts found. Import some to get started.</p>
+                <td colSpan={5} className="px-6 py-20 text-center text-soft-lavender/40">
+                  No contacts found.
                 </td>
               </tr>
             ) : (
-              contacts
-                .filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.whatsapp_number.includes(searchTerm))
-                .map((contact) => (
+              filteredContacts.map((contact) => (
                 <tr key={contact.id} className="hover:bg-white/5 transition-colors group">
                   <td className="px-6 py-4">
                     <div className="font-bold text-white">{contact.name}</div>
@@ -1605,8 +2089,18 @@ function ContactsView() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="p-2 hover:bg-white/10 rounded-lg text-soft-lavender/40 hover:text-white"><Edit2 size={16} /></button>
-                      <button className="p-2 hover:bg-red-500/10 rounded-lg text-soft-lavender/40 hover:text-red-400"><Trash2 size={16} /></button>
+                      <button 
+                        onClick={() => handleEditContact(contact)}
+                        className="p-2 hover:bg-white/10 rounded-lg text-soft-lavender/40 hover:text-white"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteContact(contact.id)}
+                        className="p-2 hover:bg-red-500/10 rounded-lg text-soft-lavender/40 hover:text-red-400"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -1615,14 +2109,160 @@ function ContactsView() {
           </tbody>
         </table>
       </div>
+
+      {showAddModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowAddModal(false)} />
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="relative w-full max-w-md glass-panel p-10"
+          >
+            <h3 className="text-2xl font-black text-white mb-8 tracking-tight">
+              {isBatch ? 'Add New Batch' : 'Add New Contact'}
+            </h3>
+            <form onSubmit={handleAddContact} className="space-y-6">
+              {isBatch ? (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Batch Name</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={newContact.name}
+                      onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:border-amethyst transition-all"
+                      placeholder="e.g. Class 10th A"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Course/Subject</label>
+                    <input 
+                      type="text" 
+                      value={newContact.course}
+                      onChange={(e) => setNewContact({ ...newContact, course: e.target.value })}
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:border-amethyst transition-all"
+                      placeholder="e.g. Mathematics"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">WhatsApp Numbers (One per line or comma separated)</label>
+                    <textarea 
+                      required
+                      value={newContact.whatsapp_number}
+                      onChange={(e) => setNewContact({ ...newContact, whatsapp_number: e.target.value })}
+                      className="w-full h-32 bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:border-amethyst transition-all resize-none"
+                      placeholder="919876543210&#10;919876543211"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Full Name</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={newContact.name}
+                      onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:border-amethyst transition-all"
+                      placeholder="e.g. John Doe"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">WhatsApp Number</label>
+                    <input 
+                      type="tel" 
+                      required
+                      value={newContact.whatsapp_number}
+                      onChange={(e) => setNewContact({ ...newContact, whatsapp_number: e.target.value })}
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:border-amethyst transition-all"
+                      placeholder="e.g. 919876543210"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Batch (Optional)</label>
+                    <input 
+                      type="text" 
+                      value={newContact.batch}
+                      onChange={(e) => setNewContact({ ...newContact, batch: e.target.value })}
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:border-amethyst transition-all"
+                      placeholder="e.g. Class 10th A"
+                    />
+                  </div>
+                </>
+              )}
+              <div className="flex gap-4 pt-4">
+                <button 
+                  type="button"
+                  onClick={() => { setShowAddModal(false); setEditingContact(null); }}
+                  className="flex-1 py-4 bg-white/5 border border-white/10 rounded-2xl font-bold text-white hover:bg-white/10 transition-all"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-1 btn-premium"
+                >
+                  {editingContact ? 'Update' : 'Save'} {isBatch ? 'Batch' : 'Contact'}
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }
 
-function MessagingView({ profile }: { profile: any }) {
+function MessagingView({ profile, user }: { profile: any, user: any }) {
   const [message, setMessage] = useState('');
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [sending, setSending] = useState(false);
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
+  const [batches, setBatches] = useState<string[]>([]);
+  const [selectedBatch, setSelectedBatch] = useState('all');
+  const [contactCount, setContactCount] = useState(0);
+
+  const isExpired = profile?.plan === 'free_trial' && profile?.trial_expiry && new Date(profile.trial_expiry) < new Date();
+  
+  useEffect(() => {
+    if (user) fetchBatches();
+  }, [user]);
+
+  const fetchBatches = async () => {
+    const { data } = await supabase.from('contacts').select('batch').eq('user_id', user.id);
+    if (data) {
+      const uniqueBatches = Array.from(new Set(data.map(c => c.batch).filter(Boolean)));
+      setBatches(uniqueBatches);
+    }
+  };
+
+  useEffect(() => {
+    if (user) fetchContactCount();
+  }, [user, selectedBatch]);
+
+  const fetchContactCount = async () => {
+    let query = supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('user_id', user.id);
+    if (selectedBatch !== 'all') {
+      query = query.eq('batch', selectedBatch);
+    }
+    const { count } = await query;
+    setContactCount(count || 0);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setAttachment(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAttachmentPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleEnhance = async () => {
     if (!message) return;
@@ -1638,55 +2278,190 @@ function MessagingView({ profile }: { profile: any }) {
   };
 
   const handleSend = async () => {
-    if (!message) return;
-    if (profile.credits <= 0) {
-      alert("You don't have enough credits. Please upgrade your plan.");
+    if (isExpired) {
+      alert("Your free trial has expired. Please upgrade to continue.");
       return;
     }
+    if (!message && !attachment) return;
+    if (!user) return;
+    
+    if (!profile.whatsapp_api_key || !profile.whatsapp_phone_number_id) {
+      alert("Please configure your WhatsApp API settings first.");
+      return;
+    }
+
     setSending(true);
-    // Mock sending for now
-    setTimeout(() => {
-      alert("Campaign started successfully!");
-      setSending(false);
+    try {
+      // 1. Fetch user's contacts
+      let query = supabase
+        .from('contacts')
+        .select('whatsapp_number')
+        .eq('user_id', user.id);
+      
+      if (selectedBatch !== 'all') {
+        query = query.eq('batch', selectedBatch);
+      }
+
+      const { data: contacts } = await query;
+      
+      if (!contacts || contacts.length === 0) {
+        alert("No contacts found to send to.");
+        setSending(false);
+        return;
+      }
+
+      // Plan Restrictions
+      let contactsToSend = contacts;
+      if (profile.plan === 'demo') {
+        if (contacts.length > 50) {
+          alert("Demo plan is limited to 50 contacts. Only first 50 will be processed.");
+          contactsToSend = contacts.slice(0, 50);
+        }
+      }
+
+      const maxMessages = profile.plan === 'demo' ? 10 : Infinity;
+      if (profile.plan === 'demo') {
+        alert("Demo plan is limited to 10 messages total per campaign.");
+      }
+
+      // 2. Send messages
+      let successCount = 0;
+      for (let i = 0; i < contactsToSend.length; i++) {
+        if (successCount >= maxMessages) break;
+        
+        const contact = contactsToSend[i];
+        try {
+          await axios.post('/api/whatsapp/send', {
+            to: contact.whatsapp_number,
+            message,
+            apiKey: profile.whatsapp_api_key,
+            phoneNumberId: profile.whatsapp_phone_number_id,
+            attachmentUrl: attachmentPreview
+          });
+          successCount++;
+        } catch (e) {
+          console.error(`Failed to send to ${contact.whatsapp_number}`, e);
+        }
+      }
+
+      // 3. Log campaign
+      await supabase.from('campaigns').insert([{
+        user_id: user.id,
+        name: `Campaign ${new Date().toLocaleString()}`,
+        message,
+        status: 'completed',
+        total_messages: contactsToSend.length,
+        sent_messages: successCount
+      }]);
+
+      alert(`Campaign completed! Sent to ${successCount}/${contactsToSend.length} contacts.`);
       setMessage('');
-    }, 2000);
+      setAttachment(null);
+      setAttachmentPreview(null);
+    } catch (error: any) {
+      alert("Failed to start campaign: " + error.message);
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
       <div className="space-y-8">
+        {isExpired && (
+          <div className="p-6 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-4">
+            <AlertCircle className="text-red-400" size={24} />
+            <div>
+              <p className="text-white font-bold">Free Trial Expired</p>
+              <p className="text-sm text-soft-lavender/60">Your 1-minute demo has ended. Please upgrade to a paid plan to continue messaging.</p>
+            </div>
+          </div>
+        )}
+
         <div className="glass-panel p-8 space-y-6">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-black text-white tracking-tight">Compose Message</h3>
             <button 
               onClick={handleEnhance}
-              disabled={isEnhancing || !message}
+              disabled={isEnhancing || !message || isExpired}
               className="flex items-center gap-2 text-xs font-black text-amethyst uppercase tracking-widest hover:text-white transition-colors disabled:opacity-50"
             >
               <Sparkles size={14} className={isEnhancing ? "animate-pulse" : ""} />
               <span>{isEnhancing ? "Enhancing..." : "AI Enhance"}</span>
             </button>
           </div>
-          <textarea 
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Type your message here..."
-            className="w-full h-64 bg-white/5 border border-white/10 rounded-2xl p-6 text-white outline-none focus:border-amethyst transition-all resize-none"
-          />
+
+          <div className="space-y-4">
+            <div className="flex gap-4">
+              <div className="flex-1 space-y-2">
+                <label className="text-[10px] font-black text-soft-lavender/40 uppercase tracking-widest">Select Target Batch</label>
+                <select 
+                  value={selectedBatch}
+                  onChange={(e) => setSelectedBatch(e.target.value)}
+                  disabled={isExpired}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white outline-none focus:border-amethyst transition-all"
+                >
+                  <option value="all" className="bg-deep-night">All Contacts ({contactCount})</option>
+                  {batches.map(b => (
+                    <option key={b} value={b} className="bg-deep-night">{b}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <textarea 
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              disabled={isExpired}
+              placeholder="Type your message here..."
+              className="w-full h-64 bg-white/5 border border-white/10 rounded-2xl p-6 text-white outline-none focus:border-amethyst transition-all resize-none disabled:opacity-50"
+            />
+          </div>
+          
+          {attachmentPreview && (
+            <div className="relative w-32 h-32 rounded-2xl overflow-hidden border border-white/10 group">
+              {attachment?.type.startsWith('image/') ? (
+                <img src={attachmentPreview} className="w-full h-full object-cover" alt="Preview" />
+              ) : (
+                <div className="w-full h-full bg-white/5 flex items-center justify-center">
+                  <FileUp size={32} className="text-soft-lavender/20" />
+                </div>
+              )}
+              <button 
+                onClick={() => { setAttachment(null); setAttachmentPreview(null); }}
+                className="absolute top-2 right-2 p-1 bg-red-500 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
+
           <div className="flex justify-between items-center">
             <div className="flex gap-4">
-              <button className="p-3 bg-white/5 rounded-xl text-soft-lavender/40 hover:text-white transition-colors"><Paperclip size={20} /></button>
-              <button className="p-3 bg-white/5 rounded-xl text-soft-lavender/40 hover:text-white transition-colors"><Smartphone size={20} /></button>
+              <label className={cn(
+                "p-3 bg-white/5 rounded-xl text-soft-lavender/40 hover:text-white transition-colors cursor-pointer",
+                isExpired && "opacity-50 cursor-not-allowed"
+              )}>
+                <Paperclip size={20} />
+                <input type="file" className="hidden" onChange={handleFileChange} accept="image/*,video/*" disabled={isExpired} />
+              </label>
+              <button disabled={isExpired} className="p-3 bg-white/5 rounded-xl text-soft-lavender/40 hover:text-white transition-colors disabled:opacity-50"><Smartphone size={20} /></button>
             </div>
             <button 
               onClick={handleSend}
-              disabled={sending || !message}
-              className="btn-premium flex items-center gap-3 px-10"
+              disabled={sending || (!message && !attachment) || isExpired}
+              className="btn-premium flex items-center gap-3 px-10 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {sending ? <RefreshCw className="animate-spin" size={20} /> : <SendHorizontal size={20} />}
               <span>{sending ? "Sending..." : "Send Campaign"}</span>
             </button>
           </div>
+          
+          {profile.plan === 'demo' && (
+            <p className="text-[10px] text-amethyst font-bold uppercase tracking-widest text-center">
+              Demo Plan Active: 10 Messages / 50 Contacts Limit
+            </p>
+          )}
         </div>
       </div>
 
@@ -1695,14 +2470,20 @@ function MessagingView({ profile }: { profile: any }) {
           <h3 className="text-xl font-black text-white tracking-tight mb-6">Live Preview</h3>
           <div className="bg-[#0b141a] rounded-3xl overflow-hidden border border-white/5 shadow-2xl">
             <div className="bg-[#075e54] p-4 flex items-center gap-3">
-              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white font-bold">B</div>
+              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white font-bold">T</div>
               <div>
-                <div className="text-white font-bold text-sm">BulkMsg Pro</div>
+                <div className="text-white font-bold text-sm">Techtaire</div>
                 <div className="text-white/60 text-[10px]">Online</div>
               </div>
             </div>
-            <div className="h-[400px] p-6 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-repeat">
+            <div className="h-[400px] p-6 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-repeat overflow-y-auto">
               <div className="bg-[#dcf8c6] p-4 rounded-2xl rounded-tl-none max-w-[80%] shadow-sm relative">
+                {attachmentPreview && attachment?.type.startsWith('image/') && (
+                  <img src={attachmentPreview} className="w-full rounded-lg mb-2" alt="Attachment" />
+                )}
+                {attachmentPreview && attachment?.type.startsWith('video/') && (
+                  <video src={attachmentPreview} className="w-full rounded-lg mb-2" controls />
+                )}
                 <p className="text-sm text-slate-800 whitespace-pre-wrap">{message || "Your message will appear here..."}</p>
                 <span className="text-[10px] text-slate-400 absolute bottom-1 right-2">12:00 PM</span>
               </div>
@@ -1714,18 +2495,31 @@ function MessagingView({ profile }: { profile: any }) {
   );
 }
 
-function HistoryView() {
+function HistoryView({ user }: { user: any }) {
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const fetchCampaigns = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('campaigns')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+    if (data) setCampaigns(data);
+    setLoading(false);
+  };
+
   useEffect(() => {
-    const fetchCampaigns = async () => {
-      const { data } = await supabase.from('campaigns').select('*').order('created_at', { ascending: false });
-      if (data) setCampaigns(data);
-      setLoading(false);
-    };
     fetchCampaigns();
-  }, []);
+  }, [user]);
+
+  const handleDeleteCampaign = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this campaign record?")) return;
+    const { error } = await supabase.from('campaigns').delete().eq('id', id);
+    if (error) alert(error.message);
+    else fetchCampaigns();
+  };
 
   return (
     <div className="glass-panel overflow-hidden">
@@ -1746,7 +2540,7 @@ function HistoryView() {
             <tr><td colSpan={5} className="px-6 py-20 text-center text-soft-lavender/40">No campaign history found.</td></tr>
           ) : (
             campaigns.map((c) => (
-              <tr key={c.id} className="hover:bg-white/5 transition-colors">
+              <tr key={c.id} className="hover:bg-white/5 transition-colors group">
                 <td className="px-6 py-4 font-bold text-white">{c.name}</td>
                 <td className="px-6 py-4">
                   <span className="px-2 py-1 bg-emerald-500/10 text-emerald-400 text-[10px] font-black rounded-full uppercase">{c.status}</span>
@@ -1759,7 +2553,15 @@ function HistoryView() {
                 </td>
                 <td className="px-6 py-4 text-soft-lavender/60 text-sm">{new Date(c.created_at).toLocaleDateString()}</td>
                 <td className="px-6 py-4 text-right">
-                  <button className="p-2 hover:bg-white/10 rounded-lg text-soft-lavender/40 hover:text-white"><BarChart3 size={16} /></button>
+                  <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button className="p-2 hover:bg-white/10 rounded-lg text-soft-lavender/40 hover:text-white"><BarChart3 size={16} /></button>
+                    <button 
+                      onClick={() => handleDeleteCampaign(c.id)}
+                      className="p-2 hover:bg-red-500/10 rounded-lg text-soft-lavender/40 hover:text-red-400"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))
@@ -1771,8 +2573,62 @@ function HistoryView() {
 }
 
 function SettingsView({ profile }: { profile: any }) {
+  const [whatsappConfig, setWhatsappConfig] = useState({
+    api_key: profile?.whatsapp_api_key || '',
+    phone_number_id: profile?.whatsapp_phone_number_id || ''
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        whatsapp_api_key: whatsappConfig.api_key,
+        whatsapp_phone_number_id: whatsappConfig.phone_number_id
+      })
+      .eq('id', profile.id);
+    
+    if (error) alert(error.message);
+    else alert("Settings saved successfully!");
+    setSaving(false);
+  };
+
   return (
     <div className="max-w-2xl space-y-8">
+      <div className="glass-panel p-10 space-y-8">
+        <h3 className="text-xl font-black text-white tracking-tight">WhatsApp API Configuration</h3>
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Access Token</label>
+            <input 
+              type="password" 
+              value={whatsappConfig.api_key}
+              onChange={(e) => setWhatsappConfig({ ...whatsappConfig, api_key: e.target.value })}
+              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:border-amethyst transition-all"
+              placeholder="EAAB..."
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Phone Number ID</label>
+            <input 
+              type="text" 
+              value={whatsappConfig.phone_number_id}
+              onChange={(e) => setWhatsappConfig({ ...whatsappConfig, phone_number_id: e.target.value })}
+              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:border-amethyst transition-all"
+              placeholder="123456789..."
+            />
+          </div>
+          <button 
+            onClick={handleSave}
+            disabled={saving}
+            className="btn-premium w-full"
+          >
+            {saving ? "Saving..." : "Save Configuration"}
+          </button>
+        </div>
+      </div>
+
       <div className="glass-panel p-10 space-y-8">
         <h3 className="text-xl font-black text-white tracking-tight">Account Settings</h3>
         <div className="space-y-6">
@@ -1785,28 +2641,18 @@ function SettingsView({ profile }: { profile: any }) {
               <Award size={24} />
             </div>
           </div>
-          <div className="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5">
-            <div>
-              <p className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest mb-1">Available Credits</p>
-              <p className="text-lg font-black text-white">{profile?.credits?.toLocaleString() || '0'}</p>
+          {profile?.trial_expiry && (
+            <div className="p-4 bg-emerald-500/10 rounded-2xl border border-emerald-500/20">
+              <p className="text-xs font-black text-emerald-400 uppercase tracking-widest mb-1">Trial Status</p>
+              <p className="text-sm text-emerald-400/80">
+                Your free trial expires on {new Date(profile.trial_expiry).toLocaleDateString()}
+              </p>
             </div>
-            <div className="w-10 h-10 bg-royal-purple/20 rounded-xl flex items-center justify-center text-royal-purple">
-              <Zap size={24} />
-            </div>
-          </div>
+          )}
         </div>
         <div className="space-y-4">
           <button className="w-full py-4 bg-royal-purple text-white rounded-2xl font-bold hover:shadow-lg hover:shadow-royal-purple/20 transition-all">Upgrade Subscription</button>
-          <button className="w-full py-4 bg-white/5 border border-white/10 text-white rounded-2xl font-bold hover:bg-white/10 transition-all">Buy Extra Credits</button>
         </div>
-      </div>
-
-      <div className="glass-panel p-10 space-y-6">
-        <h3 className="text-xl font-black text-white tracking-tight">Security</h3>
-        <button className="w-full py-4 bg-white/5 border border-white/10 text-white rounded-2xl font-bold hover:bg-white/10 transition-all flex items-center justify-center gap-3">
-          <Lock size={20} />
-          <span>Change Password</span>
-        </button>
       </div>
     </div>
   );
@@ -1852,10 +2698,13 @@ function AdminView({ user }: { user: any }) {
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID REFERENCES auth.users(id) PRIMARY KEY,
   email TEXT,
-  plan TEXT DEFAULT 'free',
-  credits INTEGER DEFAULT 100,
+  plan TEXT DEFAULT 'trial',
+  credits INTEGER DEFAULT 50,
+  trial_expiry TIMESTAMP WITH TIME ZONE,
   subscription_status TEXT DEFAULT 'inactive',
   subscription_expiry TIMESTAMP WITH TIME ZONE,
+  whatsapp_api_key TEXT,
+  whatsapp_phone_number_id TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -2030,24 +2879,111 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
   );
 }
 
-const DashboardView = () => {
-  const [chartData] = useState([
-    { name: 'Mon', sent: 4000, delivered: 3800 },
-    { name: 'Tue', sent: 3000, delivered: 2900 },
-    { name: 'Wed', sent: 2000, delivered: 1950 },
-    { name: 'Thu', sent: 2780, delivered: 2700 },
-    { name: 'Fri', sent: 1890, delivered: 1800 },
-    { name: 'Sat', sent: 2390, delivered: 2300 },
-    { name: 'Sun', sent: 3490, delivered: 3400 },
-  ]);
+const DashboardView = ({ user, profile, setView }: { user: any, profile: any, setView: (v: View) => void }) => {
+  const [stats, setStats] = useState({
+    totalContacts: 0,
+    messagesSent: 0,
+    activeCampaigns: 0,
+    deliveryRate: '98.5%'
+  });
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [chartData, setChartData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      if (!user) return;
+      setLoading(true);
+      try {
+        // 1. Total Contacts
+        const { count: contactCount } = await supabase
+          .from('contacts')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', user.id);
+        
+        // 2. Campaigns Stats
+        const { data: campaigns } = await supabase
+          .from('campaigns')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+        
+        const totalSent = campaigns?.reduce((acc, c) => acc + (c.sent_messages || 0), 0) || 0;
+        const activeCount = campaigns?.filter(c => c.status === 'pending' || c.status === 'sending').length || 0;
+
+        setStats({
+          totalContacts: contactCount || 0,
+          messagesSent: totalSent,
+          activeCampaigns: activeCount,
+          deliveryRate: '98.5%'
+        });
+
+        // 3. Recent Activity
+        const activity = campaigns?.slice(0, 4).map(c => ({
+          title: `Campaign "${c.name}" ${c.status}`,
+          time: new Date(c.created_at).toLocaleTimeString(),
+          icon: SendHorizontal,
+          color: c.status === 'completed' ? 'text-emerald-400' : 'text-amber-400'
+        })) || [];
+        setRecentActivity(activity);
+
+        // 4. Mock Chart Data based on real stats
+        setChartData([
+          { name: 'Mon', sent: Math.floor(totalSent * 0.1), delivered: Math.floor(totalSent * 0.09) },
+          { name: 'Tue', sent: Math.floor(totalSent * 0.15), delivered: Math.floor(totalSent * 0.14) },
+          { name: 'Wed', sent: Math.floor(totalSent * 0.12), delivered: Math.floor(totalSent * 0.11) },
+          { name: 'Thu', sent: Math.floor(totalSent * 0.2), delivered: Math.floor(totalSent * 0.19) },
+          { name: 'Fri', sent: Math.floor(totalSent * 0.18), delivered: Math.floor(totalSent * 0.17) },
+          { name: 'Sat', sent: Math.floor(totalSent * 0.1), delivered: Math.floor(totalSent * 0.09) },
+          { name: 'Sun', sent: Math.floor(totalSent * 0.15), delivered: Math.floor(totalSent * 0.14) },
+        ]);
+
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [user]);
+
+  if (loading) {
+    return (
+      <div className="h-[600px] flex items-center justify-center">
+        <RefreshCw className="animate-spin text-amethyst" size={48} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-10">
+      <div className="glass-panel p-6 flex items-center justify-between border-amethyst/20">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-amethyst/10 rounded-2xl flex items-center justify-center text-amethyst">
+            <Zap size={24} />
+          </div>
+          <div>
+            <p className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Current Subscription</p>
+            <h3 className="text-xl font-black text-white uppercase">{profile?.plan || 'Free Trial'}</h3>
+            {profile?.plan === 'free_trial' && (
+              <p className="text-[10px] text-amber-400 font-bold animate-pulse">DEMO EXPIRES IN 1 MINUTE</p>
+            )}
+          </div>
+        </div>
+        <button 
+          onClick={() => setView('plans')}
+          className="px-6 py-3 bg-white/5 border border-white/10 rounded-2xl text-xs font-black text-white uppercase tracking-widest hover:bg-white/10 transition-all"
+        >
+          Upgrade Plan
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-        <DashboardStat label="Total Contacts" value="12,458" icon={Users} color="bg-blue-600" />
-        <DashboardStat label="Messages Sent" value="85,241" icon={SendHorizontal} color="bg-royal-purple" />
-        <DashboardStat label="Delivery Rate" value="98.2%" icon={CheckCircle2} color="bg-emerald-600" />
-        <DashboardStat label="Active Campaigns" value="14" icon={Zap} color="bg-amethyst" />
+        <DashboardStat label="Total Contacts" value={stats.totalContacts.toLocaleString()} icon={Users} color="bg-blue-600" />
+        <DashboardStat label="Messages Sent" value={stats.messagesSent.toLocaleString()} icon={SendHorizontal} color="bg-royal-purple" />
+        <DashboardStat label="Delivery Rate" value={stats.deliveryRate} icon={CheckCircle2} color="bg-emerald-600" />
+        <DashboardStat label="Active Campaigns" value={stats.activeCampaigns.toString()} icon={Zap} color="bg-amethyst" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
@@ -2096,22 +3032,21 @@ const DashboardView = () => {
         >
           <h3 className="text-2xl font-black text-white mb-8 tracking-tight">Recent Activity</h3>
           <div className="space-y-8 flex-1">
-            {[
-              { type: 'sent', title: 'Campaign "Summer Sale" Sent', time: '2 mins ago', icon: SendHorizontal, color: 'text-emerald-400' },
-              { type: 'user', title: 'New Contact Batch Imported', time: '1 hour ago', icon: Users, color: 'text-blue-400' },
-              { type: 'alert', title: 'Plan Expiring Soon', time: '3 hours ago', icon: AlertCircle, color: 'text-amber-400' },
-              { type: 'payment', title: 'Payment Successful', time: '5 hours ago', icon: CreditCard, color: 'text-purple-400' },
-            ].map((item, i) => (
-              <div key={i} className="flex gap-4 group cursor-pointer">
-                <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-white/10 transition-all">
-                  <item.icon size={18} className={item.color} />
+            {recentActivity.length === 0 ? (
+              <p className="text-soft-lavender/40 text-center py-10">No recent activity</p>
+            ) : (
+              recentActivity.map((item, i) => (
+                <div key={i} className="flex gap-4 group cursor-pointer">
+                  <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-white/10 transition-all">
+                    <item.icon size={18} className={item.color} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-white group-hover:text-amethyst transition-colors">{item.title}</p>
+                    <p className="text-xs text-soft-lavender/40">{item.time}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-bold text-white group-hover:text-amethyst transition-colors">{item.title}</p>
-                  <p className="text-xs text-soft-lavender/40">{item.time}</p>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
           <button className="w-full py-4 mt-8 bg-white/5 border border-white/10 rounded-2xl font-bold text-sm hover:bg-white/10 transition-all">
             View All Activity
@@ -2121,3 +3056,92 @@ const DashboardView = () => {
     </div>
   );
 };
+
+function GuideView({ setView }: { setView: (v: View) => void }) {
+  const steps = [
+    {
+      title: "1. Create Meta Developer App",
+      description: "Go to developers.facebook.com, create a 'Business' type app, and add the 'WhatsApp' product to it.",
+      icon: Globe
+    },
+    {
+      title: "2. Get API Credentials",
+      description: "In your Meta App dashboard, go to WhatsApp > API Setup. Copy your 'Temporary Access Token' (or create a permanent one) and 'Phone Number ID'.",
+      icon: Lock
+    },
+    {
+      title: "3. Configure Techtaire",
+      description: "Go to Settings in Techtaire and paste your Access Token and Phone Number ID. Click 'Save Configuration' to link your account.",
+      icon: Settings
+    },
+    {
+      title: "4. Manage Contacts & Batches",
+      description: "In the Contacts tab, you can add individual students or upload an entire batch using Excel. Organize them into batches for targeted messaging.",
+      icon: Users
+    },
+    {
+      title: "5. Compose & Send",
+      description: "Use the Messaging tab to write your message. You can select a specific batch or send to all contacts. Use AI Enhance for professional results.",
+      icon: Send
+    },
+    {
+      title: "6. Track Performance",
+      description: "Monitor your campaign progress in the History tab. See delivery rates and manage previous campaign records.",
+      icon: History
+    }
+  ];
+
+  return (
+    <div className="space-y-12">
+      <div className="text-center max-w-2xl mx-auto">
+        <h2 className="text-4xl font-black text-white mb-4">How Techtaire Works</h2>
+        <p className="text-soft-lavender/60">Follow these simple steps to start scaling your student communication.</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {steps.map((step, i) => (
+          <motion.div 
+            key={i}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.1 }}
+            className="glass-panel p-8 space-y-6 group hover:border-amethyst/50 transition-all"
+          >
+            <div className="w-14 h-14 bg-amethyst/20 rounded-2xl flex items-center justify-center text-amethyst group-hover:scale-110 transition-transform">
+              <step.icon size={28} />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl font-black text-white">{step.title}</h3>
+              <p className="text-soft-lavender/60 leading-relaxed">{step.description}</p>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+
+      <div className="glass-panel p-10 bg-amethyst/5 border-amethyst/20">
+        <div className="flex flex-col md:flex-row items-center gap-10">
+          <div className="flex-1 space-y-6">
+            <h3 className="text-2xl font-black text-white">Plan Restrictions & Limits</h3>
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="mt-1 p-1 bg-emerald-500/20 rounded-full text-emerald-400"><Check size={12} /></div>
+                <p className="text-sm text-soft-lavender/80"><span className="text-white font-bold">Free Trial:</span> 1 minute of full access to explore the dashboard. Messaging is disabled after 1 minute.</p>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="mt-1 p-1 bg-emerald-500/20 rounded-full text-emerald-400"><Check size={12} /></div>
+                <p className="text-sm text-soft-lavender/80"><span className="text-white font-bold">Demo Plan (₹1):</span> Limited to 10 messages per campaign and 50 contacts total. Valid for 1 day.</p>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="mt-1 p-1 bg-emerald-500/20 rounded-full text-emerald-400"><Check size={12} /></div>
+                <p className="text-sm text-soft-lavender/80"><span className="text-white font-bold">Premium Plans:</span> Unlimited messaging, advanced AI, and priority support.</p>
+              </div>
+            </div>
+          </div>
+          <div className="w-full md:w-64">
+            <button onClick={() => setView('plans')} className="w-full btn-premium py-4">Upgrade Now</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

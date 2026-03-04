@@ -55,14 +55,19 @@ async function startServer() {
   // 1. Create Order API
   app.post("/api/payment/create-order", async (req, res) => {
     try {
+      const { amount, planName, userId } = req.body;
+      console.log("Creating Razorpay Order:", { amount, planName, userId });
+
       const razorpay = getRazorpay();
       const supabaseAdmin = getSupabaseAdmin();
 
-      if (!razorpay || !supabaseAdmin) {
-        return res.status(500).json({ error: "Payment system not configured" });
+      if (!razorpay) {
+        return res.status(500).json({ error: "Razorpay is not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in environment variables." });
       }
 
-      const { amount, planName, userId } = req.body;
+      if (!supabaseAdmin) {
+        return res.status(500).json({ error: "Supabase Admin is not configured. Please set VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in environment variables." });
+      }
 
       if (!amount || !planName || !userId) {
         return res.status(400).json({ error: "Missing required fields" });
@@ -79,6 +84,7 @@ async function startServer() {
       };
 
       const order = await razorpay.orders.create(options);
+      console.log("Razorpay Order Created Successfully:", order.id);
 
       // Store pending order in Supabase
       const { error: dbError } = await getSupabaseAdmin()
@@ -272,27 +278,47 @@ async function startServer() {
 
   // WhatsApp API Proxy / Logic
   app.post("/api/whatsapp/send", async (req, res) => {
-    const { to, message, templateName, components } = req.body;
+    const { to, message, apiKey, phoneNumberId, attachmentUrl } = req.body;
     
-    const WHATSAPP_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
-    const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    // Use provided credentials or fallback to environment variables
+    const WHATSAPP_TOKEN = apiKey || process.env.WHATSAPP_ACCESS_TOKEN;
+    const PHONE_NUMBER_ID = phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID;
 
     if (!WHATSAPP_TOKEN || !PHONE_NUMBER_ID) {
       return res.status(500).json({ error: "WhatsApp API not configured" });
     }
 
     try {
+      let data: any = {
+        messaging_product: "whatsapp",
+        to,
+      };
+
+      if (attachmentUrl) {
+        // If it's a data URL, we'd normally need to upload it to Meta first.
+        // For this demo, we'll assume it's a direct link or handle text only if it's too large.
+        // Real implementation would use the Media API.
+        const isImage = attachmentUrl.startsWith('data:image');
+        const isVideo = attachmentUrl.startsWith('data:video');
+        
+        if (isImage || isVideo) {
+          data.type = isImage ? "image" : "video";
+          data[data.type] = {
+            link: attachmentUrl.startsWith('data:') ? "https://picsum.photos/800/600" : attachmentUrl, // Fallback for data URLs in demo
+            caption: message
+          };
+        } else {
+          data.type = "text";
+          data.text = { body: message };
+        }
+      } else {
+        data.type = "text";
+        data.text = { body: message };
+      }
+
       const response = await axios.post(
         `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`,
-        {
-          messaging_product: "whatsapp",
-          to,
-          type: templateName ? "template" : "text",
-          ...(templateName 
-            ? { template: { name: templateName, language: { code: "en_US" }, components } }
-            : { text: { body: message } }
-          ),
-        },
+        data,
         {
           headers: {
             Authorization: `Bearer ${WHATSAPP_TOKEN}`,
