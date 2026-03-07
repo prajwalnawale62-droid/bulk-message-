@@ -82,19 +82,11 @@ const THEME = {
 // --- Components ---
 
 const TechtaireLogo = ({ className = "w-10 h-10" }: { className?: string }) => (
-  <div className={cn("relative flex items-center justify-center", className)}>
-    <div className="absolute inset-0 bg-gradient-to-br from-royal-purple via-amethyst to-soft-lavender rounded-xl blur-md opacity-30 animate-pulse" />
-    <div className="relative w-full h-full bg-deep-night rounded-xl border border-white/10 flex items-center justify-center overflow-hidden group shadow-2xl">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-royal-purple/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
-      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-7 h-7 text-white relative z-10 drop-shadow-[0_0_8px_rgba(93,63,211,0.8)]">
-        <path d="M3 8L12 3L21 8L12 13L3 8Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M3 12L12 17L21 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M3 16L12 21L21 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M12 3V13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-      <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-royal-purple to-transparent opacity-50" />
-    </div>
-  </div>
+<img
+  src="https://image2url.com/r2/default/images/1772892320937-4a68d07a-de9e-4081-899e-c2eef38329d3.png"
+  alt="Techtaire Logo"
+  className={className}
+/>
 );
 
 const Notification = ({ message, type, onClose }: { message: string, type: 'success' | 'error', onClose: () => void }) => (
@@ -591,9 +583,10 @@ export default function App() {
             // Log the order
             await supabase.from('orders').insert({
               user_id: user.id,
-              plan_name: selectedPlan.name,
+              plan_id: selectedPlan.name.toLowerCase().replace(' ', '_'),
               amount: selectedPlan.amount,
-              status: 'completed',
+              currency: 'INR',
+              payment_status: 'completed',
               razorpay_order_id: orderId,
               razorpay_payment_id: response.razorpay_payment_id
             });
@@ -691,15 +684,15 @@ export default function App() {
             setProfile(data);
           } else if (!error || error.code === 'PGRST116') { // PGRST116 is "no rows returned"
             const trialExpiry = new Date();
-            trialExpiry.setDate(trialExpiry.getDate() + 7);
+            trialExpiry.setMinutes(trialExpiry.getMinutes() + 1); // 1 minute demo
             
             const { data: newProfile, error: insertError } = await supabase
               .from('profiles')
               .insert([{ 
                 id: user.id, 
                 email: user.email, 
-                plan: 'trial', 
-                credits: 50,
+                plan: 'free_trial', 
+                credits: 100,
                 trial_expiry: trialExpiry.toISOString(),
                 created_at: new Date().toISOString()
               }])
@@ -746,14 +739,17 @@ CREATE TABLE IF NOT EXISTS profiles (
   email TEXT,
   plan TEXT DEFAULT 'free',
   credits INTEGER DEFAULT 100,
+  trial_expiry TIMESTAMP WITH TIME ZONE,
   subscription_status TEXT DEFAULT 'inactive',
   subscription_expiry TIMESTAMP WITH TIME ZONE,
+  whatsapp_api_key TEXT,
+  whatsapp_phone_number_id TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- 1. Create Orders Table
 CREATE TABLE IF NOT EXISTS orders (
-  id TEXT PRIMARY KEY,
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id),
   plan_id TEXT,
   amount NUMERIC,
@@ -1535,14 +1531,17 @@ CREATE TABLE IF NOT EXISTS profiles (
   email TEXT,
   plan TEXT DEFAULT 'free',
   credits INTEGER DEFAULT 100,
+  trial_expiry TIMESTAMP WITH TIME ZONE,
   subscription_status TEXT DEFAULT 'inactive',
   subscription_expiry TIMESTAMP WITH TIME ZONE,
+  whatsapp_api_key TEXT,
+  whatsapp_phone_number_id TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- 1. Create Orders Table
 CREATE TABLE IF NOT EXISTS orders (
-  id TEXT PRIMARY KEY,
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id),
   plan_id TEXT,
   amount NUMERIC,
@@ -1628,6 +1627,15 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
     <div className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-b from-dark-violet/20 to-deep-night" />
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-royal-purple/10 blur-[100px] rounded-full" />
+      
+      {/* Back to Home Button */}
+      <button 
+        onClick={() => setView('landing')}
+        className="absolute top-10 left-10 flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-soft-lavender/60 hover:text-white transition-all z-50"
+      >
+        <ArrowLeft size={18} />
+        <span className="text-xs font-bold uppercase tracking-widest">Back to Home</span>
+      </button>
       
       <div className="relative z-10 w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-20 items-center">
         <div className="hidden lg:flex flex-col items-center justify-center gap-12">
@@ -1769,9 +1777,8 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
 const PricingPage = ({ setView, isDashboard = false, onSelect }: { setView: (v: View) => void, isDashboard?: boolean, onSelect: (plan: any) => void }) => {
   const plans = [
     { name: 'Free Trial', price: '0', amount: 0, features: ['1 Minute Access', 'Demo Messaging', 'Basic AI', 'Limited Contacts'], isDemo: true },
-    { name: 'Demo', price: '1', amount: 1, features: ['Full Access for 1 Day', 'Priority Support', 'AI Enhancement', 'Unlimited Contacts'], isDemo: true },
-    { name: 'Monthly', price: '2,499', amount: 2499, features: ['Unlimited Messages', 'AI Enhancement', 'Priority Support', 'File Attachments', 'Advanced Analytics'] },
-    { name: 'Yearly', price: '17,999', amount: 17999, features: ['Everything in Monthly', '2 Months Free', 'Dedicated Account Manager', 'Custom API Integration', 'White Label Reports'] }
+    { name: 'Professional', price: '2,499', amount: 2499, features: ['Unlimited Messages', 'AI Enhancement', 'Priority Support', 'File Attachments', 'Advanced Analytics'] },
+    { name: 'Enterprise', price: '17,999', amount: 17999, features: ['Everything in Professional', '2 Months Free', 'Dedicated Account Manager', 'Custom API Integration', 'White Label Reports'] }
   ];
 
   return (
@@ -2399,16 +2406,16 @@ function MessagingView({ profile, user }: { profile: any, user: any }) {
 
       // Plan Restrictions
       let contactsToSend = contacts;
-      if (profile.plan === 'demo') {
+      if (profile.plan === 'free_trial') {
         if (contacts.length > 50) {
-          alert("Demo plan is limited to 50 contacts. Only first 50 will be processed.");
+          alert("Free trial is limited to 50 contacts. Only first 50 will be processed.");
           contactsToSend = contacts.slice(0, 50);
         }
       }
 
-      const maxMessages = profile.plan === 'demo' ? 10 : Infinity;
-      if (profile.plan === 'demo') {
-        alert("Demo plan is limited to 10 messages total per campaign.");
+      const maxMessages = profile.plan === 'free_trial' ? 10 : Infinity;
+      if (profile.plan === 'free_trial') {
+        alert("Free trial is limited to 10 messages total per campaign.");
       }
 
       // 2. Send messages
@@ -2460,7 +2467,7 @@ function MessagingView({ profile, user }: { profile: any, user: any }) {
             <AlertCircle className="text-red-400" size={24} />
             <div>
               <p className="text-white font-bold">Free Trial Expired</p>
-              <p className="text-sm text-soft-lavender/60">Your 1-minute demo has ended. Please upgrade to a paid plan to continue messaging.</p>
+              <p className="text-sm text-soft-lavender/60">Your 1-minute trial has ended. Please upgrade to a paid plan to continue messaging.</p>
             </div>
           </div>
         )}
@@ -2544,9 +2551,9 @@ function MessagingView({ profile, user }: { profile: any, user: any }) {
             </button>
           </div>
           
-          {profile.plan === 'demo' && (
-            <p className="text-[10px] text-amethyst font-bold uppercase tracking-widest text-center">
-              Demo Plan Active: 10 Messages / 50 Contacts Limit
+          {profile.plan === 'free_trial' && (
+            <p className="text-[10px] text-amethyst font-black uppercase tracking-widest text-center">
+              Free Trial Active: 10 Messages / 50 Contacts Limit
             </p>
           )}
         </div>
@@ -2732,7 +2739,7 @@ function SettingsView({ profile }: { profile: any }) {
             <div className="p-4 bg-emerald-500/10 rounded-2xl border border-emerald-500/20">
               <p className="text-xs font-black text-emerald-400 uppercase tracking-widest mb-1">Trial Status</p>
               <p className="text-sm text-emerald-400/80">
-                Your free trial expires on {new Date(profile.trial_expiry).toLocaleDateString()}
+                Your free trial expires on {new Date(profile.trial_expiry).toLocaleString()}
               </p>
             </div>
           )}
@@ -2785,8 +2792,8 @@ function AdminView({ user }: { user: any }) {
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID REFERENCES auth.users(id) PRIMARY KEY,
   email TEXT,
-  plan TEXT DEFAULT 'trial',
-  credits INTEGER DEFAULT 50,
+  plan TEXT DEFAULT 'free',
+  credits INTEGER DEFAULT 100,
   trial_expiry TIMESTAMP WITH TIME ZONE,
   subscription_status TEXT DEFAULT 'inactive',
   subscription_expiry TIMESTAMP WITH TIME ZONE,
@@ -2797,7 +2804,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 
 -- 1. Create Orders Table
 CREATE TABLE IF NOT EXISTS orders (
-  id TEXT PRIMARY KEY,
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id),
   plan_id TEXT,
   amount NUMERIC,
