@@ -10,6 +10,7 @@ import {
   Menu, 
   X,
   Plus,
+  ArrowLeft,
   FileUp,
   Sparkles,
   Search,
@@ -82,16 +83,36 @@ const THEME = {
 
 const TechtaireLogo = ({ className = "w-10 h-10" }: { className?: string }) => (
   <div className={cn("relative flex items-center justify-center", className)}>
-    <div className="absolute inset-0 bg-gradient-to-br from-royal-purple via-amethyst to-soft-lavender rounded-xl blur-sm opacity-50 animate-pulse" />
-    <div className="relative w-full h-full bg-deep-night rounded-xl border border-white/10 flex items-center justify-center overflow-hidden group">
-      <div className="absolute inset-0 bg-gradient-to-br from-royal-purple/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-white relative z-10">
-        <path d="M4 6H20M4 12H14M4 18H10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M17 12L21 16L17 20" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="18" cy="6" r="2" fill="currentColor" />
+    <div className="absolute inset-0 bg-gradient-to-br from-royal-purple via-amethyst to-soft-lavender rounded-xl blur-md opacity-30 animate-pulse" />
+    <div className="relative w-full h-full bg-deep-night rounded-xl border border-white/10 flex items-center justify-center overflow-hidden group shadow-2xl">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-royal-purple/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-7 h-7 text-white relative z-10 drop-shadow-[0_0_8px_rgba(93,63,211,0.8)]">
+        <path d="M3 8L12 3L21 8L12 13L3 8Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M3 12L12 17L21 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M3 16L12 21L21 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M12 3V13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
+      <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-royal-purple to-transparent opacity-50" />
     </div>
   </div>
+);
+
+const Notification = ({ message, type, onClose }: { message: string, type: 'success' | 'error', onClose: () => void }) => (
+  <motion.div
+    initial={{ opacity: 0, y: -50, x: '-50%' }}
+    animate={{ opacity: 1, y: 20, x: '-50%' }}
+    exit={{ opacity: 0, y: -50, x: '-50%' }}
+    className={cn(
+      "fixed top-0 left-1/2 z-[200] px-8 py-4 rounded-2xl shadow-2xl border backdrop-blur-xl flex items-center gap-4 min-w-[320px]",
+      type === 'success' ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-red-500/10 border-red-500/20 text-red-400"
+    )}
+  >
+    {type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
+    <span className="font-bold tracking-tight">{message}</span>
+    <button onClick={onClose} className="ml-auto p-1 hover:bg-white/5 rounded-lg transition-colors">
+      <X size={18} />
+    </button>
+  </motion.div>
 );
 
 const TrialTimer = ({ expiry }: { expiry: string }) => {
@@ -471,6 +492,9 @@ const DashboardStat = ({ label, value, icon: Icon, color }: { label: string, val
 // --- Main App Component ---
 
 export default function App() {
+  useEffect(() => {
+  document.title = "Techtaire";
+}, []);
   const [view, setView] = useState<View>('landing');
   const [isIntroComplete, setIsIntroComplete] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -483,6 +507,12 @@ export default function App() {
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
+  const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+
+  const showNotify = (message: string, type: 'success' | 'error' = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 5000);
+  };
 
   const handlePayment = async (plan: any) => {
     if (!user) {
@@ -516,10 +546,10 @@ export default function App() {
       
       if (error) throw error;
       
-      alert("Free Trial Activated! You have 1 minute of demo access.");
-      window.location.reload();
+      showNotify("Free Trial Activated! You have 1 minute of demo access.", 'success');
+      setTimeout(() => window.location.reload(), 2000);
     } catch (err: any) {
-      alert("Failed to activate free trial: " + err.message);
+      showNotify("Failed to activate free trial: " + err.message, 'error');
     }
   };
 
@@ -541,10 +571,45 @@ export default function App() {
         name: "Techtaire",
         description: `Upgrade to ${selectedPlan.name} Plan`,
         order_id: orderId,
-        handler: function (response: any) {
-          alert("Payment Successful! Your subscription will be activated shortly.");
-          setShowPaymentModal(false);
-          setTimeout(() => window.location.reload(), 2000);
+        handler: async function (response: any) {
+          try {
+            // Update subscription in database
+            const { error } = await supabase
+              .from('profiles')
+              .update({ 
+                plan: selectedPlan.name.toLowerCase().replace(' ', '_'),
+                credits: selectedPlan.name === 'Enterprise' ? 1000000 : 10000,
+                trial_expiry: null // Remove trial expiry on payment
+              })
+              .eq('id', user.id);
+
+            if (error) throw error;
+
+            showNotify(`Welcome to ${selectedPlan.name}! Your subscription is now active.`, 'success');
+            setShowPaymentModal(false);
+            
+            // Log the order
+            await supabase.from('orders').insert({
+              user_id: user.id,
+              plan_name: selectedPlan.name,
+              amount: selectedPlan.amount,
+              status: 'completed',
+              razorpay_order_id: orderId,
+              razorpay_payment_id: response.razorpay_payment_id
+            });
+
+            confetti({
+              particleCount: 150,
+              spread: 70,
+              origin: { y: 0.6 },
+              colors: [THEME.primary, THEME.secondary, '#ffffff']
+            });
+
+            setTimeout(() => window.location.reload(), 3000);
+          } catch (err: any) {
+            console.error("Subscription update error:", err);
+            showNotify("Payment successful, but failed to update subscription. Please contact support.", 'error');
+          }
         },
         prefill: {
           email: user.email,
@@ -770,6 +835,15 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
 
   return (
     <div className="min-h-screen bg-deep-night text-soft-lavender font-sans selection:bg-royal-purple/30">
+      <AnimatePresence>
+        {notification && (
+          <Notification 
+            message={notification.message} 
+            type={notification.type} 
+            onClose={() => setNotification(null)} 
+          />
+        )}
+      </AnimatePresence>
       <CustomCursor />
       <Particles />
       
@@ -1557,14 +1631,17 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
       
       <div className="relative z-10 w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-20 items-center">
         <div className="hidden lg:flex flex-col items-center justify-center gap-12">
-          <motion.div 
-            animate={{ y: [0, -10, 0] }}
-            transition={{ duration: 4, repeat: Infinity }}
-            onClick={handleLogoClick}
-            className="cursor-pointer"
-          >
-            <BearCharacter animation={isFocused ? 'point' : 'sleep'} />
-          </motion.div>
+          <div className="flex flex-col items-center gap-6">
+            <TechtaireLogo className="w-24 h-24" />
+            <motion.div 
+              animate={{ y: [0, -10, 0] }}
+              transition={{ duration: 4, repeat: Infinity }}
+              onClick={handleLogoClick}
+              className="cursor-pointer"
+            >
+              <BearCharacter animation={isFocused ? 'point' : 'sleep'} />
+            </motion.div>
+          </div>
           <div className="text-center">
             <h2 className="text-4xl font-black text-white mb-4 tracking-tight">
               {isSignUp ? 'Join the Pack' : 'Welcome Back'}
@@ -1586,13 +1663,23 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
           )} />
           
           <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-10">
-              <div className="w-10 h-10 bg-royal-purple rounded-xl flex items-center justify-center">
-                <Lock size={20} className="text-white" />
+            <div className="flex items-center justify-between mb-10">
+              <button 
+                onClick={() => setView('landing')}
+                className="flex items-center gap-2 text-soft-lavender/40 hover:text-white transition-colors group"
+              >
+                <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+                <span className="font-bold">Back</span>
+              </button>
+              <TechtaireLogo className="w-10 h-10 lg:hidden" />
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-royal-purple rounded-xl flex items-center justify-center">
+                  <Lock size={20} className="text-white" />
+                </div>
+                <h3 className="text-2xl font-black text-white tracking-tight">
+                  {isSignUp ? 'Create Account' : 'Secure Access'}
+                </h3>
               </div>
-              <h3 className="text-2xl font-black text-white tracking-tight">
-                {isSignUp ? 'Create Account' : 'Secure Access'}
-              </h3>
             </div>
 
             <form onSubmit={handleAuth} className="space-y-6">
