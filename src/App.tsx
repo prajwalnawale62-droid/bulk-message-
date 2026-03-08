@@ -41,18 +41,20 @@ import {
   Award,
   Heart,
   MousePointer2,
-  Lightbulb as LampIcon,
+  Lamp,
   Moon,
   Sun,
   Paperclip,
   SendHorizontal
 } from 'lucide-react';
 import { motion, AnimatePresence, useScroll, useSpring, useTransform } from 'framer-motion';
+import { GoogleGenAI } from "@google/genai";
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { cn } from './lib/utils';
 import { enhanceMessage } from './services/aiService';
 import * as XLSX from 'xlsx';
 import confetti from 'canvas-confetti';
+import { AIChatbot } from './components/AIChatbot';
 import { 
   LineChart, 
   Line, 
@@ -322,25 +324,34 @@ const IntroAnimation = ({ onComplete }: { onComplete: () => void }) => {
             className="relative w-full h-full flex flex-col items-center justify-center"
           >
             <motion.div 
-              className="absolute top-1/4 left-1/2 -translate-x-1/2"
-              animate={isLightOn ? { scale: [1, 1.2, 10], opacity: [1, 1, 0] } : {}}
+              className="absolute top-[40%] left-1/2 -translate-x-1/2 -translate-y-1/2"
+              animate={isLightOn ? { scale: [1, 1.2, 15], opacity: [1, 1, 0] } : {}}
               transition={{ duration: 1.5 }}
             >
               <motion.div 
                 className={cn(
-                  "p-8 rounded-full transition-all duration-500 cursor-pointer relative z-20",
-                  isLightOn ? "bg-white shadow-[0_0_100px_#fff]" : "bg-slate-900 border border-slate-800 hover:border-amethyst"
+                  "p-12 rounded-3xl transition-all duration-700 cursor-pointer relative z-20 group",
+                  isLightOn ? "bg-white shadow-[0_0_150px_#fff]" : "bg-white/5 border border-white/10 hover:border-amethyst hover:bg-white/10 shadow-2xl"
                 )}
                 onClick={handleLampClick}
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
               >
-                <LampIcon size={48} className={isLightOn ? "text-royal-purple" : "text-slate-600"} />
+                <div className="relative">
+                  <Lamp size={80} className={isLightOn ? "text-royal-purple" : "text-soft-lavender/40 group-hover:text-amethyst transition-colors"} />
+                  {!isLightOn && (
+                    <motion.div 
+                      className="absolute -inset-4 bg-amethyst/20 blur-2xl rounded-full -z-10"
+                      animate={{ opacity: [0.2, 0.5, 0.2] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                    />
+                  )}
+                </div>
                 {!isLightOn && (
                   <motion.div 
-                    className="absolute -inset-4 border-2 border-amethyst/30 rounded-full"
-                    animate={{ scale: [1, 1.5], opacity: [1, 0] }}
-                    transition={{ duration: 1.5, repeat: Infinity }}
+                    className="absolute -inset-4 border-2 border-amethyst/30 rounded-3xl"
+                    animate={{ scale: [1, 1.1], opacity: [1, 0] }}
+                    transition={{ duration: 2, repeat: Infinity }}
                   />
                 )}
               </motion.div>
@@ -826,7 +837,7 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
   }
 
   if (!isIntroComplete && view === 'landing') {
-    return <IntroAnimation onComplete={() => setIsIntroComplete(true)} />;
+    return <IntroAnimation onComplete={() => { setIsIntroComplete(true); setView('login'); }} />;
   }
 
   return (
@@ -878,7 +889,7 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
               <SidebarItem icon={Users} label="Contacts" active={view === 'contacts'} onClick={() => setView('contacts')} isOpen={isSidebarOpen} disabled={isExpired} />
               <SidebarItem icon={SendHorizontal} label="Messaging" active={view === 'messaging'} onClick={() => setView('messaging')} isOpen={isSidebarOpen} disabled={isExpired} />
               <SidebarItem icon={History} label="History" active={view === 'history'} onClick={() => setView('history')} isOpen={isSidebarOpen} disabled={isExpired} />
-              <SidebarItem icon={LampIcon as any} label="Guide" active={view === 'guide'} onClick={() => setView('guide')} isOpen={isSidebarOpen} />
+              <SidebarItem icon={Lamp as any} label="Guide" active={view === 'guide'} onClick={() => setView('guide')} isOpen={isSidebarOpen} />
               <SidebarItem icon={CreditCard} label="Plans" active={view === 'plans'} onClick={() => setView('plans')} isOpen={isSidebarOpen} />
               <SidebarItem icon={Settings} label="Settings" active={view === 'settings'} onClick={() => setView('settings')} isOpen={isSidebarOpen} disabled={isExpired} />
               {isAdmin && <SidebarItem icon={Shield} label="Admin" active={view === 'admin'} onClick={() => setView('admin')} isOpen={isSidebarOpen} />}
@@ -1056,6 +1067,7 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
           </motion.div>
         </div>
       )}
+      <AIChatbot />
     </div>
   );
 }
@@ -1089,7 +1101,6 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, isOpen, disabled }: {
 
 const LandingPage = ({ setView, onSelect }: { setView: (v: View) => void, onSelect: (plan: any) => void }) => {
   const [isDarkMode, setIsDarkMode] = useState(true);
-  const [isChatOpen, setIsChatOpen] = useState(false);
   const [showDemo, setShowDemo] = useState(false);
 
   return (
@@ -1313,60 +1324,6 @@ const LandingPage = ({ setView, onSelect }: { setView: (v: View) => void, onSele
       <section id="contact">
         <ContactPage />
       </section>
-
-      {/* AI Assistant Bubble */}
-      <div className="fixed bottom-10 right-10 z-[70]">
-        <AnimatePresence>
-          {isChatOpen && (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.8, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.8, y: 20 }}
-              className="glass-panel w-80 h-[450px] mb-6 flex flex-col overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)]"
-            >
-              <div className="bg-royal-purple p-6 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-                    <Sparkles size={16} className="text-white" />
-                  </div>
-                  <span className="text-white font-bold">AI Assistant</span>
-                </div>
-                <button onClick={() => setIsChatOpen(false)} className="text-white/60 hover:text-white"><X size={20} /></button>
-              </div>
-              <div className="flex-1 p-6 space-y-4 overflow-y-auto">
-                <div className="bg-white/5 p-4 rounded-2xl rounded-tl-none text-sm text-soft-lavender/80">
-                  Hello! I'm your Techtaire AI assistant. How can I help you today?
-                </div>
-                <div className="bg-royal-purple/20 p-4 rounded-2xl rounded-tr-none text-sm text-white ml-8">
-                  What are the pricing plans?
-                </div>
-                <div className="bg-white/5 p-4 rounded-2xl rounded-tl-none text-sm text-soft-lavender/80">
-                  We have three plans: Starter (Free), Professional (₹1,499), and Enterprise (₹4,999). Would you like to see the details?
-                </div>
-              </div>
-              <div className="p-4 border-t border-white/5 flex gap-2">
-                <input type="text" placeholder="Type a message..." className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm text-white outline-none focus:border-amethyst" />
-                <button className="p-2 bg-royal-purple text-white rounded-xl"><SendHorizontal size={18} /></button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-        <motion.button 
-          onClick={() => setIsChatOpen(!isChatOpen)}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          className="w-16 h-16 bg-royal-purple rounded-full flex items-center justify-center text-white shadow-2xl shadow-royal-purple/40 relative"
-        >
-          {isChatOpen ? <X size={28} /> : <MessageSquare size={28} />}
-          {!isChatOpen && (
-            <motion.div 
-              className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-deep-night"
-              animate={{ scale: [1, 1.2, 1] }}
-              transition={{ duration: 2, repeat: Infinity }}
-            />
-          )}
-        </motion.button>
-      </div>
 
       {/* Demo Modal */}
       <AnimatePresence>
