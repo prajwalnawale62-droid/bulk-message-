@@ -2587,6 +2587,12 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
         alert("Free trial is limited to 10 messages total per campaign.");
       }
 
+      if (!profile.whatsapp_api_key || !profile.whatsapp_phone_number_id) {
+        alert("WhatsApp API is not configured. Please go to Settings and enter your Access Token and Phone Number ID.");
+        setSending(false);
+        return;
+      }
+
       // 2. Send messages
       let successCount = 0;
       let errorMessages: string[] = [];
@@ -2595,6 +2601,13 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
         if (successCount >= maxMessages) break;
         
         const contact = contactsToSend[i];
+        
+        // Skip empty numbers
+        if (!contact.whatsapp_number || contact.whatsapp_number.trim() === '') {
+          console.warn(`Skipping contact with empty WhatsApp number: ${contact.name}`);
+          continue;
+        }
+
         try {
           await axios.post('/api/whatsapp/send', {
             to: contact.whatsapp_number,
@@ -2605,8 +2618,26 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
           });
           successCount++;
         } catch (e: any) {
+          const status = e.response?.status;
           const errorData = e.response?.data;
-          const msg = errorData?.error?.message || errorData?.message || e.message;
+          let msg = errorData?.error?.message || errorData?.message || e.message;
+          
+          if (status === 401) {
+            const subcode = errorData?.error?.error_subcode;
+            if (subcode === 463) {
+              msg = "Your WhatsApp Access Token has EXPIRED. Meta's temporary tokens only last 24 hours. Please generate a new one in the Meta Developer Portal and update it in Settings.";
+            } else {
+              msg = "401 Unauthorized: Your WhatsApp Access Token is invalid or expired. Please update it in Settings.";
+            }
+          } else if (status === 400) {
+            const errorMsg = errorData?.error?.message || "";
+            if (errorMsg.includes("not in the allowed list")) {
+              msg = `400 Bad Request: Recipient ${contact.whatsapp_number} is not in your Meta App's "Test Numbers" list. In Development mode, you can only send to verified test numbers.`;
+            } else {
+              msg = `400 Bad Request: ${msg}`;
+            }
+          }
+
           console.error(`Failed to send to ${contact.whatsapp_number}`, e);
           if (!errorMessages.includes(msg)) {
             errorMessages.push(msg);
@@ -2625,9 +2656,11 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
       }]);
 
       if (successCount === 0 && contactsToSend.length > 0) {
-        alert(`Campaign failed! Sent to 0/${contactsToSend.length} contacts.\n\nErrors encountered:\n${errorMessages.join('\n')}\n\nTroubleshooting tips:\n1. Ensure your WhatsApp API Key and Phone Number ID are correct in Settings.\n2. Ensure contact numbers include the country code (e.g., 91 for India) without the '+' sign.\n3. If your Meta app is in Development mode, you can only send to verified test numbers.`);
+        alert(`Campaign failed! Sent to 0/${contactsToSend.length} contacts.\n\nErrors encountered:\n${errorMessages.join('\n')}\n\nTroubleshooting tips:\n1. Ensure your WhatsApp API Key and Phone Number ID are correct in Settings.\n2. Ensure contact numbers include the country code (e.g., 91 for India) without the '+' sign.\n3. If your Meta app is in Development mode, you MUST add the recipient's number to the "Test Numbers" list in your Meta Dashboard.\n4. Check your Meta App's "API Setup" page to see if your token has expired.`);
+      } else if (successCount < contactsToSend.length) {
+        alert(`Campaign partially completed! Sent to ${successCount}/${contactsToSend.length} contacts.\n\nSome messages failed. Errors encountered:\n${errorMessages.join('\n')}`);
       } else {
-        alert(`Campaign completed! Sent to ${successCount}/${contactsToSend.length} contacts.`);
+        alert(`Campaign completed successfully! Sent to ${successCount}/${contactsToSend.length} contacts.`);
       }
       setMessage('');
       setAttachment(null);
@@ -2891,6 +2924,44 @@ function SettingsView({ profile }: { profile: any }) {
     phone_number_id: profile?.whatsapp_phone_number_id || ''
   });
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  const handleTestConnection = async () => {
+    if (!whatsappConfig.api_key || !whatsappConfig.phone_number_id) {
+      alert("Please enter both Access Token and Phone Number ID first.");
+      return;
+    }
+
+    setTesting(true);
+    try {
+      // Test by sending a simple text message to the same number (or just checking token validity)
+      // We'll use the existing proxy endpoint but with a flag or just a dummy message
+      const response = await axios.post('/api/whatsapp/send', {
+        to: '919551522030', // Using the user's number from logs as a test target
+        message: 'Teachtaire Connection Test: Your WhatsApp API is now correctly configured! ✅',
+        apiKey: whatsappConfig.api_key,
+        phoneNumberId: whatsappConfig.phone_number_id
+      });
+
+      if (response.data) {
+        alert("Success! Connection verified. You can now send campaigns.");
+      }
+    } catch (e: any) {
+      const status = e.response?.status;
+      const errorData = e.response?.data;
+      let msg = errorData?.error?.message || errorData?.message || e.message;
+
+      if (status === 401) {
+        msg = "Connection Failed (401): Your token is invalid or expired. Please generate a new one.";
+      } else if (status === 400) {
+        msg = `Connection Failed (400): ${msg}`;
+      }
+      
+      alert(msg);
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -2921,6 +2992,9 @@ function SettingsView({ profile }: { profile: any }) {
               className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:border-amethyst transition-all"
               placeholder="EAAB..."
             />
+            <p className="text-[10px] text-soft-lavender/40 mt-1 italic">
+              Note: Temporary access tokens expire every 24 hours. For production, use a System User access token.
+            </p>
           </div>
           <div className="space-y-2">
             <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Phone Number ID</label>
@@ -2932,13 +3006,22 @@ function SettingsView({ profile }: { profile: any }) {
               placeholder="123456789..."
             />
           </div>
-          <button 
-            onClick={handleSave}
-            disabled={saving}
-            className="btn-premium w-full"
-          >
-            {saving ? "Saving..." : "Save Configuration"}
-          </button>
+          <div className="flex gap-4">
+            <button 
+              onClick={handleSave}
+              disabled={saving}
+              className="btn-premium flex-1"
+            >
+              {saving ? "Saving..." : "Save Configuration"}
+            </button>
+            <button 
+              onClick={handleTestConnection}
+              disabled={testing}
+              className="px-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-bold hover:bg-white/10 transition-all disabled:opacity-50"
+            >
+              {testing ? "Testing..." : "Test Connection"}
+            </button>
+          </div>
         </div>
       </div>
 
