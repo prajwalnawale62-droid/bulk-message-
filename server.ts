@@ -4,6 +4,14 @@ import axios from "axios";
 import dotenv from "dotenv";
 import crypto from "crypto";
 import Razorpay from "razorpay";
+import nodemailer from "nodemailer";
+import { 
+  getWelcomeEmail, 
+  getPaymentSuccessEmail, 
+  getLoginAlertEmail, 
+  getPasswordResetEmail 
+} from './src/services/emailTemplates';
+import rateLimit from "express-rate-limit";
 import { createClient } from "@supabase/supabase-js";
 
 dotenv.config();
@@ -41,9 +49,30 @@ const getRazorpay = () => {
   return razorpayInstance;
 };
 
+// Initialize Nodemailer
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || "smtp.gmail.com",
+  port: parseInt(process.env.SMTP_PORT || "587"),
+  secure: false,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  // Rate Limiting
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP to 100 requests per windowMs
+    message: "Too many requests from this IP, please try again after 15 minutes"
+  });
+
+  // Apply rate limiting to auth and payment routes
+  app.use("/api/payment/", limiter);
 
   // Use raw body for webhook signature verification
   app.use(express.json({
@@ -51,6 +80,64 @@ async function startServer() {
       req.rawBody = buf;
     }
   }));
+
+  // --- Email System ---
+  app.post("/api/email/send", async (req, res) => {
+    const { to, subject, html, type, data } = req.body;
+    
+    let emailHtml = html;
+    if (type === 'welcome') {
+      emailHtml = getWelcomeEmail(to);
+    } else if (type === 'payment_success') {
+      emailHtml = getPaymentSuccessEmail(to, data.plan, data.amount);
+    } else if (type === 'login_alert') {
+      emailHtml = getLoginAlertEmail(to, data.time, data.browser, data.ip);
+    } else if (type === 'password_reset') {
+      emailHtml = getPasswordResetEmail(to, data.resetLink);
+    }
+
+    try {
+      const info = await transporter.sendMail({
+        from: `"Teachtaire Notifications" <${process.env.SMTP_USER}>`,
+        to,
+        subject: subject || (
+          type === 'welcome' ? 'Welcome to Teachtaire!' : 
+          type === 'payment_success' ? 'Payment Successful' :
+          type === 'login_alert' ? 'Security Alert: New Login' :
+          'Password Reset Request'
+        ),
+        html: emailHtml,
+      });
+      console.log("Email sent:", info.messageId);
+      res.json({ success: true, messageId: info.messageId });
+    } catch (error: any) {
+      console.error("Email Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // --- Admin Routes ---
+  app.get("/api/admin/stats", async (req, res) => {
+    const supabaseAdmin = getSupabaseAdmin();
+    if (!supabaseAdmin) return res.status(500).json({ error: "Supabase Admin not configured" });
+
+    try {
+      const { data: users, count: userCount } = await supabaseAdmin.from('profiles').select('*', { count: 'exact' });
+      const { data: orders } = await supabaseAdmin.from('orders').select('*');
+      const { data: campaigns } = await supabaseAdmin.from('campaigns').select('*');
+
+      const totalRevenue = orders?.reduce((acc: number, order: any) => acc + (order.payment_status === 'paid' ? order.amount : 0), 0) || 0;
+
+      res.json({
+        userCount,
+        totalRevenue,
+        campaignCount: campaigns?.length || 0,
+        activeUsers: users?.filter((u: any) => u.subscription_status === 'active').length || 0
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
 
   // 1. Create Order API
   app.post("/api/payment/create-order", async (req, res) => {
@@ -164,11 +251,15 @@ async function startServer() {
         else creditsToAdd = 3000;
 
         // Get current credits
-        const { data: profile } = await getSupabaseAdmin()
+        const { data: profile, error: profileError } = await getSupabaseAdmin()
           .from('profiles')
-          .select('credits')
+          .select('credits, email')
           .eq('id', userId)
           .single();
+
+        if (profileError) {
+          console.error("Profile Fetch Error:", profileError);
+        }
 
         const newCredits = (profile?.credits || 0) + creditsToAdd;
         const expiryDate = new Date();
@@ -188,6 +279,20 @@ async function startServer() {
           console.error("Subscription Activation Error:", updateError);
         } else {
           console.log(`Successfully activated ${planName} for ${userId}`);
+          // 3. Send Payment Success Email
+          if (profile?.email) {
+            try {
+              await transporter.sendMail({
+                from: `"Teachtaire Notifications" <${process.env.SMTP_USER}>`,
+                to: profile.email,
+                subject: 'Payment Successful - Teachtaire',
+                html: getPaymentSuccessEmail(profile.email, planName, (payment.amount / 100).toString()),
+              });
+              console.log("Payment success email sent to:", profile.email);
+            } catch (e) {
+              console.error("Failed to send payment success email", e);
+            }
+          }
         }
       }
 

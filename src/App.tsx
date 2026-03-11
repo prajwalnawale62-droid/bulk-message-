@@ -45,7 +45,8 @@ import {
   Moon,
   Sun,
   Paperclip,
-  SendHorizontal
+  SendHorizontal,
+  Bell
 } from 'lucide-react';
 import { motion, AnimatePresence, useScroll, useSpring, useTransform } from 'framer-motion';
 import { GoogleGenAI } from "@google/genai";
@@ -84,11 +85,24 @@ const THEME = {
 // --- Components ---
 
 const TechtaireLogo = ({ className = "w-10 h-10" }: { className?: string }) => (
-<img
-  src="https://image2url.com/r2/default/images/1772892320937-4a68d07a-de9e-4081-899e-c2eef38329d3.png"
-  alt="Techtaire Logo"
-  className={className}
-/>
+  <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="logo-grad" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#6366F1" />
+        <stop offset="1" stopColor="#A855F7" />
+      </linearGradient>
+      <filter id="glow">
+        <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
+        <feMerge>
+          <feMergeNode in="coloredBlur"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>
+    <path d="M20 35C20 26.7157 26.7157 20 35 20H65C73.2843 20 80 26.7157 80 35V65C80 73.2843 73.2843 80 65 80H35C26.7157 80 20 73.2843 20 65V35Z" fill="url(#logo-grad)" filter="url(#glow)" />
+    <path d="M35 42H65M35 50H65M35 58H50" stroke="white" strokeWidth="5" strokeLinecap="round" />
+    <circle cx="70" cy="30" r="5" fill="white" />
+  </svg>
 );
 
 const Notification = ({ message, type, onClose }: { message: string, type: 'success' | 'error', onClose: () => void }) => (
@@ -269,121 +283,41 @@ const BearCharacter = ({ animation = 'wave' }: { animation?: 'wave' | 'walk' | '
 };
 
 const IntroAnimation = ({ onComplete }: { onComplete: () => void }) => {
-  const [step, setStep] = useState(0);
-  const [isLightOn, setIsLightOn] = useState(false);
-
   useEffect(() => {
-    const timer = setTimeout(() => setStep(1), 3000);
+    const timer = setTimeout(onComplete, 2500);
     return () => clearTimeout(timer);
-  }, []);
-
-  const handleLampClick = () => {
-    setIsLightOn(true);
-    setTimeout(onComplete, 1500);
-  };
+  }, [onComplete]);
 
   return (
     <div className="fixed inset-0 z-[100] bg-deep-night flex flex-col items-center justify-center overflow-hidden">
-      <AnimatePresence mode="wait">
-        {step === 0 && (
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ 
+          opacity: 1, 
+          scale: 1,
+          filter: ["blur(10px)", "blur(0px)"]
+        }}
+        transition={{ duration: 1.5, ease: "easeOut" }}
+        className="relative flex flex-col items-center"
+      >
+        <div className="relative">
+          <TechtaireLogo className="w-40 h-40 drop-shadow-[0_0_30px_rgba(99,102,241,0.5)]" />
           <motion.div 
-            key="logo"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 1.2 }}
-            className="relative"
-          >
-            <div className="w-32 h-32 bg-royal-purple rounded-3xl flex items-center justify-center relative overflow-hidden group">
-              <Send size={64} className="text-white relative z-10" />
-              <motion.div 
-                className="absolute inset-0 border-4 border-amethyst rounded-3xl"
-                animate={{ opacity: [0.3, 1, 0.3], scale: [1, 1.1, 1] }}
-                transition={{ duration: 2, repeat: Infinity }}
-              />
-              <motion.div 
-                className="absolute inset-0 bg-gradient-to-tr from-white/20 to-transparent"
-                animate={{ x: ['-100%', '100%'] }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
-              />
-            </div>
-            <motion.h1 
-              className="text-4xl font-bold mt-8 glow-text tracking-tighter"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              Techtaire
-            </motion.h1>
-          </motion.div>
-        )}
-
-        {step === 1 && (
-          <motion.div 
-            key="bear"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="relative w-full h-full flex flex-col items-center justify-center"
-          >
-            <motion.div 
-              className="absolute top-[40%] left-1/2 -translate-x-1/2 -translate-y-1/2"
-              animate={isLightOn ? { scale: [1, 1.2, 15], opacity: [1, 1, 0] } : {}}
-              transition={{ duration: 1.5 }}
-            >
-              <motion.div 
-                className={cn(
-                  "p-12 rounded-3xl transition-all duration-700 cursor-pointer relative z-20 group",
-                  isLightOn ? "bg-white shadow-[0_0_150px_#fff]" : "bg-white/5 border border-white/10 hover:border-amethyst hover:bg-white/10 shadow-2xl"
-                )}
-                onClick={handleLampClick}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <div className="relative">
-                  <Lamp size={80} className={isLightOn ? "text-royal-purple" : "text-soft-lavender/40 group-hover:text-amethyst transition-colors"} />
-                  {!isLightOn && (
-                    <motion.div 
-                      className="absolute -inset-4 bg-amethyst/20 blur-2xl rounded-full -z-10"
-                      animate={{ opacity: [0.2, 0.5, 0.2] }}
-                      transition={{ duration: 2, repeat: Infinity }}
-                    />
-                  )}
-                </div>
-                {!isLightOn && (
-                  <motion.div 
-                    className="absolute -inset-4 border-2 border-amethyst/30 rounded-3xl"
-                    animate={{ scale: [1, 1.1], opacity: [1, 0] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                  />
-                )}
-              </motion.div>
-            </motion.div>
-
-            <motion.div 
-              className="absolute bottom-1/4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-6"
-              initial={{ x: '100vw' }}
-              animate={{ x: '-50%' }}
-              transition={{ type: 'spring', damping: 20 }}
-            >
-              <BearCharacter animation="point" />
-              <motion.p 
-                className="text-xl font-medium text-soft-lavender/60 italic"
-                animate={{ opacity: [0.4, 1, 0.4] }}
-                transition={{ duration: 2, repeat: Infinity }}
-              >
-                👉 "Click the lamp to power the platform"
-              </motion.p>
-            </motion.div>
-
-            {isLightOn && (
-              <motion.div 
-                className="absolute inset-0 bg-white z-[101]"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.5 }}
-              />
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+            className="absolute inset-0 rounded-full bg-royal-purple/20 blur-3xl -z-10"
+            animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.6, 0.3] }}
+            transition={{ duration: 2, repeat: Infinity }}
+          />
+        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5, duration: 1 }}
+          className="mt-12 text-center"
+        >
+          <h1 className="text-5xl font-black text-white tracking-tighter glow-text">Teachtaire</h1>
+          <p className="text-soft-lavender/40 uppercase tracking-[0.3em] text-[10px] mt-2 font-black">WhatsApp Bulk Sender</p>
+        </motion.div>
+      </motion.div>
     </div>
   );
 };
@@ -871,17 +805,8 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
             "fixed left-0 top-0 h-full bg-deep-night/80 backdrop-blur-xl border-r border-white/5 transition-all duration-500 z-50",
             isSidebarOpen ? "w-72" : "w-24"
           )}>
-            <div className="p-8 flex items-center gap-4 mb-12">
+            <div className="p-8 flex items-center justify-center mb-12">
               <TechtaireLogo className="w-12 h-12" />
-              {isSidebarOpen && (
-                <motion.span 
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="text-2xl font-black glow-text tracking-tighter"
-                >
-                  Techtaire
-                </motion.span>
-              )}
             </div>
 
             <nav className="px-6 space-y-3">
@@ -949,7 +874,7 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
                 >
                   {view === 'dashboard' && <DashboardView user={user} profile={profile} setView={setView} />}
                   {view === 'contacts' && <ContactsView user={user} />}
-                  {view === 'messaging' && <MessagingView profile={profile} user={user} />}
+                  {view === 'messaging' && <MessagingView profile={profile} user={user} showNotify={showNotify} />}
                   {view === 'history' && <HistoryView user={user} />}
                   {view === 'guide' && <GuideView setView={setView} />}
                   {view === 'plans' && <PricingPage setView={setView} isDashboard onSelect={handlePayment} />}
@@ -1067,7 +992,7 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
           </motion.div>
         </div>
       )}
-      <AIChatbot />
+      {user && <AIChatbot />}
     </div>
   );
 }
@@ -1474,6 +1399,7 @@ const LoginPage = ({ setView }: { setView: (v: View) => void }) => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   const [logoClicks, setLogoClicks] = useState(0);
 
@@ -1534,13 +1460,24 @@ CREATE TABLE IF NOT EXISTS campaigns (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 4. Enable RLS
+-- 4. Create Login Logs Table
+CREATE TABLE IF NOT EXISTS login_logs (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
+  email TEXT,
+  browser TEXT,
+  ip TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 5. Enable RLS
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE campaigns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE login_logs ENABLE ROW LEVEL SECURITY;
 
--- 5. Create Policies
+-- 6. Create Policies
 CREATE POLICY "Users can view their own profile" ON profiles FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "Users can update their own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "Users can insert their own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
@@ -1548,6 +1485,8 @@ CREATE POLICY "Users can insert their own profile" ON profiles FOR INSERT WITH C
 CREATE POLICY "Users can view their own orders" ON orders FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users can manage their own contacts" ON contacts FOR ALL USING (auth.uid() = user_id);
 CREATE POLICY "Users can manage their own campaigns" ON campaigns FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users can view their own login logs" ON login_logs FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert their own login logs" ON login_logs FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt() ->> 'email' = 'prajwalnawale3040@gmail.com');
       `;
       console.log(sql);
@@ -1558,18 +1497,91 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!email || !password) {
+      alert("Please enter email and password");
+      return;
+    }
+
     setLoading(true);
     try {
-      if (isSignUp) {
-        const { error } = await supabase.auth.signUp({ email, password });
+      if (isResettingPassword) {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
         if (error) throw error;
+        
+        // Send custom reset email via our SMTP as well
+        try {
+          await axios.post('/api/email/send', {
+            to: email,
+            type: 'password_reset',
+            data: {
+              resetLink: `${window.location.origin}/reset-password`
+            }
+          });
+        } catch (e) {
+          console.error("Failed to send custom reset email", e);
+        }
+
+        alert("Password reset link sent to your email!");
+        setIsResettingPassword(false);
+        return;
+      }
+
+      if (isSignUp) {
+        const { data, error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        
+        // Send welcome email
+        if (data.user) {
+          try {
+            await axios.post('/api/email/send', {
+              to: email,
+              type: 'welcome'
+            });
+          } catch (e) {
+            console.error("Failed to send welcome email", e);
+          }
+        }
+
         alert("Check your email for the confirmation link!");
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        
+        // Send login alert email and log login
+        if (data.user) {
+          const browserInfo = navigator.userAgent;
+          const loginTime = new Date().toLocaleString();
+
+          try {
+            // Log to database
+            await supabase.from('login_logs').insert({
+              user_id: data.user.id,
+              email: data.user.email,
+              browser: browserInfo,
+              ip: 'Client-side'
+            });
+
+            // Send email
+            await axios.post('/api/email/send', {
+              to: email,
+              type: 'login_alert',
+              data: {
+                time: loginTime,
+                browser: browserInfo,
+                ip: 'Detected'
+              }
+            });
+          } catch (e) {
+            console.error("Failed to log login or send alert email", e);
+          }
+        }
+
         // The onAuthStateChange listener in App will handle the view change, 
         // but we set it here as well for immediate feedback.
-        if (data.session) {
+        if (data.session || data.user) {
           setView('dashboard');
         }
       }
@@ -1666,7 +1678,18 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Password</label>
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Password</label>
+                  {!isSignUp && !isResettingPassword && (
+                    <button 
+                      type="button"
+                      onClick={() => setIsResettingPassword(true)}
+                      className="text-[10px] font-black text-amethyst uppercase tracking-widest hover:text-white transition-colors"
+                    >
+                      Forgot Password?
+                    </button>
+                  )}
+                </div>
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-soft-lavender/20" size={18} />
                   <input 
@@ -1700,7 +1723,7 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
                   <RefreshCw className="animate-spin" size={20} />
                 ) : (
                   <>
-                    <span>{isSignUp ? 'Sign Up' : 'Sign In'}</span>
+                    <span>{isResettingPassword ? 'Send Reset Link' : isSignUp ? 'Sign Up' : 'Sign In'}</span>
                     <ArrowRight size={20} />
                   </>
                 )}
@@ -1709,20 +1732,28 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
 
             <div className="mt-10 pt-10 border-t border-white/5 flex flex-col gap-4 text-center">
               <p className="text-sm text-soft-lavender/40">
-                {isSignUp ? 'Already have an account?' : "Don't have an account?"} 
+                {isSignUp ? 'Already have an account?' : isResettingPassword ? 'Remember your password?' : "Don't have an account?"} 
                 <button 
-                  onClick={() => setIsSignUp(!isSignUp)}
+                  onClick={() => {
+                    if (isResettingPassword) {
+                      setIsResettingPassword(false);
+                    } else {
+                      setIsSignUp(!isSignUp);
+                    }
+                  }}
                   className="text-amethyst font-bold cursor-pointer hover:underline ml-1"
                 >
-                  {isSignUp ? 'Sign In' : 'Create one now'}
+                  {isSignUp ? 'Sign In' : isResettingPassword ? 'Back to Login' : 'Create one now'}
                 </button>
               </p>
-              <button 
-                onClick={() => setView('landing')}
-                className="text-xs text-soft-lavender/20 hover:text-soft-lavender/40 transition-colors"
-              >
-                Back to Home
-              </button>
+              {!isResettingPassword && (
+                <button 
+                  onClick={() => setView('landing')}
+                  className="text-xs text-soft-lavender/20 hover:text-soft-lavender/40 transition-colors"
+                >
+                  Back to Home
+                </button>
+              )}
             </div>
           </div>
         </motion.div>
@@ -1733,9 +1764,29 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
 
 const PricingPage = ({ setView, isDashboard = false, onSelect }: { setView: (v: View) => void, isDashboard?: boolean, onSelect: (plan: any) => void }) => {
   const plans = [
-    { name: 'Free Trial', price: '0', amount: 0, features: ['1 Minute Access', 'Demo Messaging', 'Basic AI', 'Limited Contacts'], isDemo: true },
-    { name: 'Professional', price: '2,499', amount: 2499, features: ['Unlimited Messages', 'AI Enhancement', 'Priority Support', 'File Attachments', 'Advanced Analytics'] },
-    { name: 'Enterprise', price: '17,999', amount: 17999, features: ['Everything in Professional', '2 Months Free', 'Dedicated Account Manager', 'Custom API Integration', 'White Label Reports'] }
+    { 
+      name: 'Demo Plan', 
+      price: 'Free', 
+      amount: 0, 
+      features: ['1 Day Access', 'Demo Messaging', 'Basic AI Assistant', 'Limited Contacts'], 
+      isDemo: true,
+      description: 'Perfect for exploring our platform features.'
+    },
+    { 
+      name: 'Professional', 
+      price: '2,999', 
+      amount: 2999, 
+      features: ['Unlimited Messages', 'AI Enhancement', 'Priority Support', 'File Attachments', 'Advanced Analytics'],
+      isPopular: true,
+      description: 'The complete solution for growing businesses.'
+    },
+    { 
+      name: 'Enterprise', 
+      price: '17,999', 
+      amount: 17999, 
+      features: ['Everything in Professional', '2 Months Free', 'Dedicated Account Manager', 'Custom API Integration', 'White Label Reports'],
+      description: 'Scale without limits with enterprise-grade power.'
+    }
   ];
 
   return (
@@ -1743,14 +1794,61 @@ const PricingPage = ({ setView, isDashboard = false, onSelect }: { setView: (v: 
       <div className="max-w-7xl mx-auto">
         {!isDashboard && (
           <div className="text-center mb-20">
-            <h2 className="text-5xl font-black text-white mb-6 tracking-tight">Premium Plans</h2>
-            <p className="text-soft-lavender/60 max-w-2xl mx-auto">Choose the perfect plan for your business growth.</p>
+            <h2 className="text-6xl font-black text-white mb-6 tracking-tight">Modern Pricing</h2>
+            <p className="text-soft-lavender/60 max-w-2xl mx-auto text-lg">Choose the perfect plan for your business growth. Scale your messaging with confidence.</p>
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-7xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl mx-auto">
           {plans.map((plan, i) => (
-            <PricingCard key={i} plan={plan} isPremium={i >= 2} onSelect={onSelect} />
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.1 }}
+              whileHover={{ y: -10 }}
+              className={cn(
+                "glass-panel p-10 flex flex-col gap-8 relative group transition-all duration-500",
+                plan.isPopular ? "border-amethyst/50 shadow-[0_20px_50px_rgba(155,89,182,0.15)] scale-105 z-10" : "hover:border-white/20"
+              )}
+            >
+              {plan.isPopular && (
+                <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-amethyst text-white text-[10px] font-black px-4 py-1 rounded-full uppercase tracking-widest">
+                  Most Popular
+                </div>
+              )}
+              
+              <div className="space-y-2">
+                <h3 className="text-2xl font-black text-white">{plan.name}</h3>
+                <p className="text-sm text-soft-lavender/40">{plan.description}</p>
+              </div>
+
+              <div className="flex items-baseline gap-2">
+                <span className="text-5xl font-black text-white">₹{plan.price}</span>
+                {plan.amount > 0 && <span className="text-soft-lavender/40 text-sm">/month</span>}
+              </div>
+
+              <div className="space-y-4 flex-1">
+                {plan.features.map((f, j) => (
+                  <div key={j} className="flex items-center gap-3 text-sm text-soft-lavender/80">
+                    <div className="w-5 h-5 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+                      <Check size={12} />
+                    </div>
+                    {f}
+                  </div>
+                ))}
+              </div>
+
+              <button 
+                onClick={() => onSelect(plan)}
+                className={cn(
+                  "w-full py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all duration-300",
+                  plan.isPopular ? "bg-amethyst text-white shadow-lg shadow-amethyst/20 hover:bg-amethyst/80" : "bg-white/5 text-white hover:bg-white/10"
+                )}
+              >
+                {plan.amount === 0 ? 'Start Free' : 'Get Started'}
+              </button>
+            </motion.div>
           ))}
         </div>
       </div>
@@ -1860,10 +1958,11 @@ function ContactsView({ user }: { user: any }) {
   const [contacts, setContacts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedTag, setSelectedTag] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [isBatch, setIsBatch] = useState(false);
   const [editingContact, setEditingContact] = useState<any>(null);
-  const [newContact, setNewContact] = useState({ name: '', whatsapp_number: '', batch: '', course: '' });
+  const [newContact, setNewContact] = useState({ name: '', whatsapp_number: '', batch: '', course: '', tags: '' });
 
   useEffect(() => {
     if (user) fetchContacts();
@@ -1880,6 +1979,31 @@ function ContactsView({ user }: { user: any }) {
     
     if (data) setContacts(data);
     setLoading(false);
+  };
+
+  const filteredContacts = useMemo(() => {
+    return contacts.filter(c => {
+      const matchesSearch = (c.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                             c.whatsapp_number?.includes(searchTerm) ||
+                             c.batch?.toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchesTag = selectedTag === 'all' || (c.tags && c.tags.includes(selectedTag));
+      return matchesSearch && matchesTag;
+    });
+  }, [contacts, searchTerm, selectedTag]);
+
+  const allTags = useMemo(() => {
+    const tags = new Set<string>();
+    contacts.forEach(c => {
+      if (c.tags) {
+        c.tags.split(',').forEach((t: string) => tags.add(t.trim()));
+      }
+    });
+    return Array.from(tags);
+  }, [contacts]);
+
+  const detectDuplicates = (numbers: string[]) => {
+    const existingNumbers = new Set(contacts.map(c => c.whatsapp_number));
+    return numbers.filter(n => existingNumbers.has(n));
   };
 
   const handleDeleteContact = async (id: string) => {
@@ -1916,7 +2040,8 @@ function ContactsView({ user }: { user: any }) {
           name: newContact.name,
           whatsapp_number: newContact.whatsapp_number.replace(/\D/g, ''),
           batch: newContact.batch,
-          course: newContact.course
+          course: newContact.course,
+          tags: newContact.tags
         })
         .eq('id', editingContact.id);
 
@@ -1939,12 +2064,24 @@ function ContactsView({ user }: { user: any }) {
         return;
       }
 
-      const contactsToInsert = numbers.map(num => ({
+      const duplicates = detectDuplicates(numbers);
+      if (duplicates.length > 0) {
+        if (!confirm(`${duplicates.length} numbers already exist. Do you want to skip them and add the rest?`)) return;
+      }
+
+      const finalNumbers = numbers.filter(n => !duplicates.includes(n));
+      if (finalNumbers.length === 0) {
+        alert("All numbers are already in your contacts.");
+        return;
+      }
+
+      const contactsToInsert = finalNumbers.map(num => ({
         user_id: user.id,
-        name: newContact.name, // Using batch name as contact name or we could use "Student"
+        name: newContact.name || 'Student',
         whatsapp_number: num,
-        batch: newContact.name,
+        batch: newContact.batch || 'Batch',
         course: newContact.course,
+        tags: newContact.tags,
         status: 'active'
       }));
 
@@ -2050,26 +2187,32 @@ function ContactsView({ user }: { user: any }) {
     else fetchContacts();
   };
 
-  const filteredContacts = contacts.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    c.whatsapp_number.includes(searchTerm) ||
-    c.batch?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   return (
     <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <div className="relative w-96">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-soft-lavender/20" size={18} />
-          <input 
-            type="text" 
-            placeholder="Search contacts..." 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-12 pr-4 text-white outline-none focus:border-amethyst transition-all"
-          />
+      <div className="flex flex-col md:flex-row gap-6 items-center justify-between mb-10">
+        <div className="flex flex-1 gap-4 w-full">
+          <div className="relative flex-1">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-soft-lavender/20" size={18} />
+            <input 
+              type="text" 
+              placeholder="Search contacts..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-12 pr-4 text-white outline-none focus:border-amethyst transition-all"
+            />
+          </div>
+          <select 
+            value={selectedTag}
+            onChange={(e) => setSelectedTag(e.target.value)}
+            className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white outline-none focus:border-amethyst transition-all text-sm"
+          >
+            <option value="all">All Tags</option>
+            {allTags.map(tag => (
+              <option key={tag} value={tag}>{tag}</option>
+            ))}
+          </select>
         </div>
-        <div className="flex gap-4">
+        <div className="flex gap-4 w-full md:w-auto">
           <label className="btn-premium flex items-center gap-2 cursor-pointer">
             <FileUp size={20} />
             <span>Import Excel</span>
@@ -2206,6 +2349,16 @@ function ContactsView({ user }: { user: any }) {
                       placeholder="919876543210&#10;919876543211"
                     />
                   </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Tags (comma separated)</label>
+                    <input 
+                      type="text" 
+                      value={newContact.tags}
+                      onChange={(e) => setNewContact({ ...newContact, tags: e.target.value })}
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:border-amethyst transition-all"
+                      placeholder="e.g. VIP, Student"
+                    />
+                  </div>
                 </>
               ) : (
                 <>
@@ -2241,6 +2394,16 @@ function ContactsView({ user }: { user: any }) {
                       placeholder="e.g. Class 10th A"
                     />
                   </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Tags (comma separated)</label>
+                    <input 
+                      type="text" 
+                      value={newContact.tags}
+                      onChange={(e) => setNewContact({ ...newContact, tags: e.target.value })}
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:border-amethyst transition-all"
+                      placeholder="e.g. VIP, Student"
+                    />
+                  </div>
                 </>
               )}
               <div className="flex gap-4 pt-4">
@@ -2266,7 +2429,7 @@ function ContactsView({ user }: { user: any }) {
   );
 }
 
-function MessagingView({ profile, user }: { profile: any, user: any }) {
+function MessagingView({ profile, user, showNotify }: { profile: any, user: any, showNotify: (m: string, t?: 'success' | 'error') => void }) {
   const [message, setMessage] = useState('');
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [sending, setSending] = useState(false);
@@ -2275,6 +2438,9 @@ function MessagingView({ profile, user }: { profile: any, user: any }) {
   const [batches, setBatches] = useState<string[]>([]);
   const [selectedBatch, setSelectedBatch] = useState('all');
   const [contactCount, setContactCount] = useState(0);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
+  const [isScheduled, setIsScheduled] = useState(false);
 
   const isExpired = profile?.plan === 'free_trial' && profile?.trial_expiry && new Date(profile.trial_expiry) < new Date();
   
@@ -2320,9 +2486,15 @@ function MessagingView({ profile, user }: { profile: any, user: any }) {
     setIsEnhancing(true);
     try {
       const enhanced = await enhanceMessage(message, 'marketing', { emoji: true, grammar: true });
-      setMessage(enhanced);
+      if (enhanced === message) {
+        showNotify("AI could not enhance the message. Check your API key.", "error");
+      } else {
+        setMessage(enhanced);
+        showNotify("Message enhanced successfully!", "success");
+      }
     } catch (err) {
       console.error(err);
+      showNotify("AI Enhancement failed.", "error");
     } finally {
       setIsEnhancing(false);
     }
@@ -2343,6 +2515,32 @@ function MessagingView({ profile, user }: { profile: any, user: any }) {
 
     setSending(true);
     try {
+      if (isScheduled && scheduleDate && scheduleTime) {
+        const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}`);
+        if (scheduledAt < new Date()) {
+          alert("Schedule time must be in the future.");
+          setSending(false);
+          return;
+        }
+
+        await supabase.from('campaigns').insert([{
+          user_id: user.id,
+          name: `Scheduled Campaign ${new Date().toLocaleString()}`,
+          message,
+          status: 'scheduled',
+          scheduled_at: scheduledAt.toISOString(),
+          batch: selectedBatch,
+          attachment_url: attachmentPreview
+        }]);
+
+        showNotify("Campaign scheduled successfully!", "success");
+        setMessage('');
+        setAttachment(null);
+        setAttachmentPreview(null);
+        setSending(false);
+        return;
+      }
+
       // 1. Fetch user's contacts
       let query = supabase
         .from('contacts')
@@ -2443,7 +2641,7 @@ function MessagingView({ profile, user }: { profile: any, user: any }) {
           </div>
 
           <div className="space-y-4">
-            <div className="flex gap-4">
+            <div className="flex flex-col md:flex-row gap-4">
               <div className="flex-1 space-y-2">
                 <label className="text-[10px] font-black text-soft-lavender/40 uppercase tracking-widest">Select Target Batch</label>
                 <select 
@@ -2458,7 +2656,46 @@ function MessagingView({ profile, user }: { profile: any, user: any }) {
                   ))}
                 </select>
               </div>
+              <div className="flex-1 space-y-2">
+                <label className="text-[10px] font-black text-soft-lavender/40 uppercase tracking-widest">Schedule Campaign</label>
+                <div className="flex items-center gap-3 h-[46px] bg-white/5 border border-white/10 rounded-xl px-4">
+                  <input 
+                    type="checkbox" 
+                    checked={isScheduled}
+                    onChange={(e) => setIsScheduled(e.target.checked)}
+                    className="w-4 h-4 rounded border-white/10 bg-white/5 text-amethyst focus:ring-amethyst"
+                  />
+                  <span className="text-sm text-soft-lavender/60">Schedule for later</span>
+                </div>
+              </div>
             </div>
+
+            {isScheduled && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                className="grid grid-cols-2 gap-4 pt-2"
+              >
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-soft-lavender/40 uppercase tracking-widest">Date</label>
+                  <input 
+                    type="date" 
+                    value={scheduleDate}
+                    onChange={(e) => setScheduleDate(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white outline-none focus:border-amethyst transition-all"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-soft-lavender/40 uppercase tracking-widest">Time</label>
+                  <input 
+                    type="time" 
+                    value={scheduleTime}
+                    onChange={(e) => setScheduleTime(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white outline-none focus:border-amethyst transition-all"
+                  />
+                </div>
+              </motion.div>
+            )}
 
             <textarea 
               value={message}
@@ -2709,227 +2946,6 @@ function SettingsView({ profile }: { profile: any }) {
   );
 }
 
-function AdminView({ user }: { user: any }) {
-  const [orders, setOrders] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'orders' | 'users'>('orders');
-  const [searchEmail, setSearchEmail] = useState('');
-  const [foundUser, setFoundUser] = useState<any>(null);
-
-  useEffect(() => {
-    if (activeTab === 'orders') fetchOrders();
-  }, [activeTab]);
-
-  const fetchOrders = async () => {
-    setLoading(true);
-    const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
-    if (data) setOrders(data);
-    setLoading(false);
-  };
-
-  const handleUserSearch = async () => {
-    if (!searchEmail) return;
-    const { data } = await supabase.from('profiles').select('*').eq('email', searchEmail).single();
-    setFoundUser(data);
-  };
-
-  const handleManualUpgrade = async (plan: string, credits: number) => {
-    if (!foundUser) return;
-    const { error } = await supabase.from('profiles').update({ plan, credits }).eq('id', foundUser.id);
-    if (error) alert(error.message);
-    else {
-      alert("User upgraded successfully!");
-      handleUserSearch();
-    }
-  };
-
-  const showSqlSetup = () => {
-    const sql = `
--- 0. Create Profiles Table
-CREATE TABLE IF NOT EXISTS profiles (
-  id UUID REFERENCES auth.users(id) PRIMARY KEY,
-  email TEXT,
-  plan TEXT DEFAULT 'free',
-  credits INTEGER DEFAULT 100,
-  trial_expiry TIMESTAMP WITH TIME ZONE,
-  subscription_status TEXT DEFAULT 'inactive',
-  subscription_expiry TIMESTAMP WITH TIME ZONE,
-  whatsapp_api_key TEXT,
-  whatsapp_phone_number_id TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 1. Create Orders Table
-CREATE TABLE IF NOT EXISTS orders (
-  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-  user_id UUID REFERENCES auth.users(id),
-  plan_id TEXT,
-  amount NUMERIC,
-  currency TEXT,
-  payment_status TEXT DEFAULT 'pending',
-  razorpay_order_id TEXT,
-  razorpay_payment_id TEXT,
-  razorpay_signature TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 2. Create Contacts Table
-CREATE TABLE IF NOT EXISTS contacts (
-  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-  user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
-  name TEXT,
-  whatsapp_number TEXT,
-  batch TEXT,
-  course TEXT,
-  status TEXT DEFAULT 'active',
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 3. Create Campaigns Table
-CREATE TABLE IF NOT EXISTS campaigns (
-  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-  user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
-  name TEXT,
-  message TEXT,
-  status TEXT DEFAULT 'pending',
-  total_messages INTEGER DEFAULT 0,
-  sent_messages INTEGER DEFAULT 0,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 4. Enable RLS
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE campaigns ENABLE ROW LEVEL SECURITY;
-
--- 5. Create Policies
-CREATE POLICY "Users can view their own profile" ON profiles FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Users can update their own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
-CREATE POLICY "Users can insert their own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
-
-CREATE POLICY "Users can view their own orders" ON orders FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users can manage their own contacts" ON contacts FOR ALL USING (auth.uid() = user_id);
-CREATE POLICY "Users can manage their own campaigns" ON campaigns FOR ALL USING (auth.uid() = user_id);
-CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt() ->> 'email' = 'prajwalnawale3040@gmail.com');
-    `;
-    console.log(sql);
-    alert("SQL Setup commands have been logged to the console. Please run them in your Supabase SQL Editor.");
-  };
-
-  return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <div className="flex gap-4 border-b border-white/5">
-          <button 
-            onClick={() => setActiveTab('orders')}
-            className={cn("px-6 py-4 text-sm font-black uppercase tracking-widest transition-all", activeTab === 'orders' ? "text-amethyst border-b-2 border-amethyst" : "text-soft-lavender/40 hover:text-white")}
-          >
-            Automatic Orders
-          </button>
-          <button 
-            onClick={() => setActiveTab('users')}
-            className={cn("px-6 py-4 text-sm font-black uppercase tracking-widest transition-all", activeTab === 'users' ? "text-amethyst border-b-2 border-amethyst" : "text-soft-lavender/40 hover:text-white")}
-          >
-            Manual Upgrade
-          </button>
-        </div>
-        <button 
-          onClick={showSqlSetup}
-          className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-xs font-bold text-soft-lavender/60 hover:text-white hover:bg-white/10 transition-all"
-        >
-          <Database size={14} />
-          <span>Database Setup (SQL)</span>
-        </button>
-      </div>
-
-      {activeTab === 'orders' ? (
-        <div className="glass-panel overflow-hidden">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-white/5 bg-white/5">
-                <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Order ID</th>
-                <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">User</th>
-                <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Plan</th>
-                <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Amount</th>
-                <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {loading ? (
-                <tr><td colSpan={5} className="px-6 py-20 text-center"><RefreshCw className="animate-spin text-amethyst mx-auto" /></td></tr>
-              ) : orders.length === 0 ? (
-                <tr><td colSpan={5} className="px-6 py-20 text-center text-soft-lavender/40">No orders found.</td></tr>
-              ) : (
-                orders.map((o) => (
-                  <tr key={o.id} className="hover:bg-white/5 transition-colors">
-                    <td className="px-6 py-4 font-mono text-xs text-soft-lavender/60">{o.id}</td>
-                    <td className="px-6 py-4 text-white font-bold">{o.user_id}</td>
-                    <td className="px-6 py-4 text-amethyst font-bold uppercase text-xs">{o.plan_id}</td>
-                    <td className="px-6 py-4 text-white font-black">₹{o.amount}</td>
-                    <td className="px-6 py-4">
-                      <span className={cn(
-                        "px-2 py-1 text-[10px] font-black rounded-full uppercase",
-                        o.payment_status === 'paid' ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"
-                      )}>
-                        {o.payment_status}
-                      </span>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="max-w-2xl space-y-8">
-          <div className="glass-panel p-10 space-y-6">
-            <h3 className="text-xl font-black text-white tracking-tight">Search User</h3>
-            <div className="flex gap-4">
-              <input 
-                type="email" 
-                placeholder="user@example.com" 
-                value={searchEmail}
-                onChange={(e) => setSearchEmail(e.target.value)}
-                className="flex-1 bg-white/5 border border-white/10 rounded-2xl p-4 text-white outline-none focus:border-amethyst"
-              />
-              <button onClick={handleUserSearch} className="btn-premium px-8">Search</button>
-            </div>
-          </div>
-
-          {foundUser && (
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-panel p-10 space-y-8">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h4 className="text-2xl font-black text-white">{foundUser.email}</h4>
-                  <p className="text-soft-lavender/40">Current Plan: <span className="text-amethyst font-bold uppercase">{foundUser.plan}</span></p>
-                  <p className="text-soft-lavender/40">Credits: <span className="text-white font-bold">{foundUser.credits}</span></p>
-                </div>
-                <div className="w-16 h-16 bg-royal-purple/20 rounded-2xl flex items-center justify-center text-amethyst">
-                  <UserPlus size={32} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <button onClick={() => handleManualUpgrade('professional', 150000)} className="p-4 bg-white/5 border border-white/10 rounded-2xl hover:border-amethyst transition-all text-left group">
-                  <div className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest mb-1">Upgrade to</div>
-                  <div className="text-lg font-black text-white group-hover:text-amethyst">Professional</div>
-                  <div className="text-xs text-soft-lavender/40">150,000 Credits</div>
-                </button>
-                <button onClick={() => handleManualUpgrade('enterprise', 1000000)} className="p-4 bg-white/5 border border-white/10 rounded-2xl hover:border-amethyst transition-all text-left group">
-                  <div className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest mb-1">Upgrade to</div>
-                  <div className="text-lg font-black text-white group-hover:text-amethyst">Enterprise</div>
-                  <div className="text-xs text-soft-lavender/40">1,000,000 Credits</div>
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 const DashboardView = ({ user, profile, setView }: { user: any, profile: any, setView: (v: View) => void }) => {
   const [stats, setStats] = useState({
     totalContacts: 0,
@@ -2978,16 +2994,31 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
         })) || [];
         setRecentActivity(activity);
 
-        // 4. Mock Chart Data based on real stats
-        setChartData([
-          { name: 'Mon', sent: Math.floor(totalSent * 0.1), delivered: Math.floor(totalSent * 0.09) },
-          { name: 'Tue', sent: Math.floor(totalSent * 0.15), delivered: Math.floor(totalSent * 0.14) },
-          { name: 'Wed', sent: Math.floor(totalSent * 0.12), delivered: Math.floor(totalSent * 0.11) },
-          { name: 'Thu', sent: Math.floor(totalSent * 0.2), delivered: Math.floor(totalSent * 0.19) },
-          { name: 'Fri', sent: Math.floor(totalSent * 0.18), delivered: Math.floor(totalSent * 0.17) },
-          { name: 'Sat', sent: Math.floor(totalSent * 0.1), delivered: Math.floor(totalSent * 0.09) },
-          { name: 'Sun', sent: Math.floor(totalSent * 0.15), delivered: Math.floor(totalSent * 0.14) },
-        ]);
+        // 4. Real Chart Data based on real stats
+        const { data: campaignHistory } = await supabase
+          .from('campaigns')
+          .select('created_at, sent_messages')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: true })
+          .limit(7);
+
+        if (campaignHistory && campaignHistory.length > 0) {
+          setChartData(campaignHistory.map(c => ({
+            name: new Date(c.created_at).toLocaleDateString('en-US', { weekday: 'short' }),
+            sent: c.sent_messages || 0,
+            delivered: Math.floor((c.sent_messages || 0) * 0.98)
+          })));
+        } else {
+          setChartData([
+            { name: 'Mon', sent: 0, delivered: 0 },
+            { name: 'Tue', sent: 0, delivered: 0 },
+            { name: 'Wed', sent: 0, delivered: 0 },
+            { name: 'Thu', sent: 0, delivered: 0 },
+            { name: 'Fri', sent: 0, delivered: 0 },
+            { name: 'Sat', sent: 0, delivered: 0 },
+            { name: 'Sun', sent: 0, delivered: 0 },
+          ]);
+        }
 
       } catch (err) {
         console.error(err);
@@ -3196,3 +3227,302 @@ function GuideView({ setView }: { setView: (v: View) => void }) {
     </div>
   );
 }
+
+
+const AdminView = ({ user }: { user: any }) => {
+  const [stats, setStats] = useState<any>(null);
+  const [users, setUsers] = useState<any[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'stats' | 'users' | 'orders' | 'manual' | 'notifications'>('stats');
+  const [searchEmail, setSearchEmail] = useState('');
+  const [foundUser, setFoundUser] = useState<any>(null);
+  const [notifSubject, setNotifSubject] = useState('');
+  const [notifMessage, setNotifMessage] = useState('');
+  const [sendingNotif, setSendingNotif] = useState(false);
+
+  useEffect(() => {
+    fetchAdminData();
+  }, []);
+
+  const fetchAdminData = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get('/api/admin/stats');
+      setStats(response.data);
+
+      const { data: profiles } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+      setUsers(profiles || []);
+
+      const { data: orderData } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+      setOrders(orderData || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUserSearch = async () => {
+    if (!searchEmail) return;
+    const { data } = await supabase.from('profiles').select('*').eq('email', searchEmail).single();
+    setFoundUser(data);
+  };
+
+  const handleManualUpgrade = async (plan: string, credits: number) => {
+    if (!foundUser) return;
+    const { error } = await supabase.from('profiles').update({ plan, credits }).eq('id', foundUser.id);
+    if (error) alert(error.message);
+    else {
+      alert("User upgraded successfully!");
+      handleUserSearch();
+      fetchAdminData();
+    }
+  };
+
+  const handleSendSystemNotification = async () => {
+    if (!notifSubject || !notifMessage) return;
+    setSendingNotif(true);
+    try {
+      // In a real app, you'd have a backend endpoint that iterates through all users
+      // For this demo, we'll send it to all users in our 'users' state
+      const promises = users.map(u => 
+        axios.post('/api/email/send', {
+          to: u.email,
+          subject: notifSubject,
+          html: `
+            <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+              <h2 style="color: #8B5CF6;">System Notification</h2>
+              <p>${notifMessage}</p>
+              <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+              <p style="font-size: 12px; color: #999;">&copy; 2026 Techtaire. All rights reserved.</p>
+            </div>
+          `
+        })
+      );
+      await Promise.all(promises);
+      alert(`Notification sent to ${users.length} users!`);
+      setNotifSubject('');
+      setNotifMessage('');
+    } catch (err) {
+      console.error(err);
+      alert("Failed to send some notifications.");
+    } finally {
+      setSendingNotif(false);
+    }
+  };
+
+  if (loading) return <div className="h-[600px] flex items-center justify-center"><RefreshCw className="animate-spin text-amethyst" size={48} /></div>;
+
+  return (
+    <div className="space-y-10">
+      <div className="flex gap-4 border-b border-white/5 mb-10 overflow-x-auto">
+        {[
+          { id: 'stats', label: 'Overview', icon: BarChart3 },
+          { id: 'users', label: 'Users', icon: Users },
+          { id: 'orders', label: 'Orders', icon: CreditCard },
+          { id: 'manual', label: 'Manual Upgrade', icon: Zap },
+          { id: 'notifications', label: 'Notifications', icon: Bell }
+        ].map((tab) => (
+          <button 
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
+            className={cn(
+              "flex items-center gap-2 px-6 py-4 text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap",
+              activeTab === tab.id ? "text-amethyst border-b-2 border-amethyst" : "text-soft-lavender/40 hover:text-white"
+            )}
+          >
+            <tab.icon size={14} />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'stats' && (
+        <div className="space-y-10">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            <DashboardStat label="Total Users" value={stats?.userCount || 0} icon={Users} color="bg-blue-600" />
+            <DashboardStat label="Total Revenue" value={`₹${stats?.totalRevenue || 0}`} icon={CreditCard} color="bg-emerald-600" />
+            <DashboardStat label="Total Campaigns" value={stats?.campaignCount || 0} icon={SendHorizontal} color="bg-royal-purple" />
+            <DashboardStat label="Active Subscriptions" value={stats?.activeUsers || 0} icon={Zap} color="bg-amethyst" />
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'users' && (
+        <div className="glass-panel p-10">
+          <h3 className="text-2xl font-black text-white mb-8 tracking-tight uppercase">User Management</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-white/5 bg-white/5">
+                  <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">User</th>
+                  <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Plan</th>
+                  <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Status</th>
+                  <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Joined</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {users.map((u) => (
+                  <tr key={u.id} className="hover:bg-white/5 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="font-bold text-white">{u.email}</div>
+                      <div className="text-xs text-soft-lavender/40">{u.id}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="px-3 py-1 bg-royal-purple/20 text-royal-purple text-[10px] font-black rounded-full uppercase tracking-widest">
+                        {u.plan}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={cn(
+                        "px-3 py-1 text-[10px] font-black rounded-full uppercase tracking-widest",
+                        u.subscription_status === 'active' ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
+                      )}>
+                        {u.subscription_status || 'inactive'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-soft-lavender/40 text-sm">
+                      {new Date(u.created_at).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'orders' && (
+        <div className="glass-panel overflow-hidden">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b border-white/5 bg-white/5">
+                <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Order ID</th>
+                <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">User</th>
+                <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Plan</th>
+                <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Amount</th>
+                <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {orders.map((o) => (
+                <tr key={o.id} className="hover:bg-white/5 transition-colors">
+                  <td className="px-6 py-4 font-mono text-xs text-soft-lavender/60">{o.id}</td>
+                  <td className="px-6 py-4 text-white font-bold">{o.user_id}</td>
+                  <td className="px-6 py-4 text-amethyst font-bold uppercase text-xs">{o.plan_id}</td>
+                  <td className="px-6 py-4 text-white font-black">₹{o.amount}</td>
+                  <td className="px-6 py-4">
+                    <span className={cn(
+                      "px-2 py-1 text-[10px] font-black rounded-full uppercase",
+                      o.payment_status === 'paid' ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"
+                    )}>
+                      {o.payment_status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {activeTab === 'manual' && (
+        <div className="max-w-2xl space-y-8">
+          <div className="glass-panel p-10 space-y-6">
+            <h3 className="text-xl font-black text-white tracking-tight">Search User</h3>
+            <div className="flex gap-4">
+              <input 
+                type="email" 
+                placeholder="user@example.com" 
+                value={searchEmail}
+                onChange={(e) => setSearchEmail(e.target.value)}
+                className="flex-1 bg-white/5 border border-white/10 rounded-2xl p-4 text-white outline-none focus:border-amethyst"
+              />
+              <button onClick={handleUserSearch} className="btn-premium px-8">Search</button>
+            </div>
+          </div>
+
+          {foundUser && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-panel p-10 space-y-8">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">User Found</p>
+                  <h4 className="text-xl font-black text-white">{foundUser.email}</h4>
+                  <p className="text-sm text-soft-lavender/60">Current Plan: <span className="text-amethyst uppercase font-bold">{foundUser.plan}</span></p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Credits</p>
+                  <p className="text-2xl font-black text-white">{foundUser.credits}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <button onClick={() => handleManualUpgrade('professional', 150000)} className="p-6 bg-white/5 border border-white/10 rounded-2xl hover:border-amethyst transition-all text-left group">
+                  <p className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest mb-2">Upgrade to</p>
+                  <h5 className="text-lg font-black text-white group-hover:text-amethyst transition-colors">Professional</h5>
+                  <p className="text-xs text-soft-lavender/60">1.5L Credits • ₹1499</p>
+                </button>
+                <button onClick={() => handleManualUpgrade('enterprise', 1000000)} className="p-6 bg-white/5 border border-white/10 rounded-2xl hover:border-amethyst transition-all text-left group">
+                  <p className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest mb-2">Upgrade to</p>
+                  <h5 className="text-lg font-black text-white group-hover:text-amethyst transition-colors">Enterprise</h5>
+                  <p className="text-xs text-soft-lavender/60">10L Credits • ₹4999</p>
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'notifications' && (
+        <div className="max-w-3xl space-y-8">
+          <div className="glass-panel p-10 space-y-8">
+            <div>
+              <h3 className="text-2xl font-black text-white tracking-tight uppercase">System Notification</h3>
+              <p className="text-soft-lavender/40 text-sm">Send a professional email notification to all registered users.</p>
+            </div>
+
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Subject Line</label>
+                <input 
+                  type="text" 
+                  value={notifSubject}
+                  onChange={(e) => setNotifSubject(e.target.value)}
+                  placeholder="e.g., Important System Maintenance"
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white outline-none focus:border-amethyst"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Message Content</label>
+                <textarea 
+                  rows={6}
+                  value={notifMessage}
+                  onChange={(e) => setNotifMessage(e.target.value)}
+                  placeholder="Write your message here..."
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white outline-none focus:border-amethyst resize-none"
+                />
+              </div>
+
+              <button 
+                onClick={handleSendSystemNotification}
+                disabled={sendingNotif || !notifSubject || !notifMessage}
+                className="w-full btn-premium py-5 flex items-center justify-center gap-3 disabled:opacity-50"
+              >
+                {sendingNotif ? (
+                  <RefreshCw className="animate-spin" size={20} />
+                ) : (
+                  <>
+                    <SendHorizontal size={20} />
+                    <span className="font-black uppercase tracking-widest">Broadcast to {users.length} Users</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
