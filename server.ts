@@ -421,6 +421,7 @@ async function startServer() {
         data.text = { body: message };
       }
 
+      console.log(`Sending WhatsApp message to ${to} using Phone Number ID ${PHONE_NUMBER_ID}`);
       const response = await axios.post(
         `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`,
         data,
@@ -431,6 +432,7 @@ async function startServer() {
           },
         }
       );
+      console.log(`WhatsApp message sent successfully to ${to}`);
       res.json(response.data);
     } catch (error: any) {
       console.error("WhatsApp Send Error:", error.response?.data || error.message);

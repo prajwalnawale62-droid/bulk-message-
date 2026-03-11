@@ -627,9 +627,9 @@ export default function App() {
           
           if (data) {
             setProfile(data);
-          } else if (!error || error.code === 'PGRST116') { // PGRST116 is "no rows returned"
+          } else if (!error || error.code === 'PGRST116') {
             const trialExpiry = new Date();
-            trialExpiry.setMinutes(trialExpiry.getMinutes() + 1); // 1 minute demo
+            trialExpiry.setMinutes(trialExpiry.getMinutes() + 1);
             
             const { data: newProfile, error: insertError } = await supabase
               .from('profiles')
@@ -646,11 +646,6 @@ export default function App() {
             
             if (newProfile) setProfile(newProfile);
             if (insertError) console.error("Profile creation error:", insertError);
-          } else {
-            if (error.code === '42P01') {
-              alert("Database table 'profiles' is missing. Please run the SQL setup commands in your Supabase SQL Editor.");
-            }
-            console.error("Profile fetch error:", error);
           }
         } catch (err) {
           console.error("Unexpected error in fetchProfile:", err);
@@ -658,7 +653,26 @@ export default function App() {
           setLoading(false);
         }
       };
+
       fetchProfile();
+
+      // Subscribe to profile changes
+      const profileSubscription = supabase
+        .channel(`profile:${user.id}`)
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'profiles',
+          filter: `id=eq.${user.id}`
+        }, (payload) => {
+          console.log('Profile updated real-time:', payload.new);
+          setProfile(payload.new);
+        })
+        .subscribe();
+
+      return () => {
+        profileSubscription.unsubscribe();
+      };
     }
   }, [user]);
 
@@ -2575,6 +2589,8 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
 
       // 2. Send messages
       let successCount = 0;
+      let errorMessages: string[] = [];
+
       for (let i = 0; i < contactsToSend.length; i++) {
         if (successCount >= maxMessages) break;
         
@@ -2588,8 +2604,13 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
             attachmentUrl: attachmentPreview
           });
           successCount++;
-        } catch (e) {
+        } catch (e: any) {
+          const errorData = e.response?.data;
+          const msg = errorData?.error?.message || errorData?.message || e.message;
           console.error(`Failed to send to ${contact.whatsapp_number}`, e);
+          if (!errorMessages.includes(msg)) {
+            errorMessages.push(msg);
+          }
         }
       }
 
@@ -2603,7 +2624,11 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
         sent_messages: successCount
       }]);
 
-      alert(`Campaign completed! Sent to ${successCount}/${contactsToSend.length} contacts.`);
+      if (successCount === 0 && contactsToSend.length > 0) {
+        alert(`Campaign failed! Sent to 0/${contactsToSend.length} contacts.\n\nErrors encountered:\n${errorMessages.join('\n')}\n\nTroubleshooting tips:\n1. Ensure your WhatsApp API Key and Phone Number ID are correct in Settings.\n2. Ensure contact numbers include the country code (e.g., 91 for India) without the '+' sign.\n3. If your Meta app is in Development mode, you can only send to verified test numbers.`);
+      } else {
+        alert(`Campaign completed! Sent to ${successCount}/${contactsToSend.length} contacts.`);
+      }
       setMessage('');
       setAttachment(null);
       setAttachmentPreview(null);
