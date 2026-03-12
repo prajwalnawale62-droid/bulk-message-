@@ -54,6 +54,7 @@ import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { cn } from './lib/utils';
 import { enhanceMessage } from './services/aiService';
 import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
 import confetti from 'canvas-confetti';
 import { AIChatbot } from './components/AIChatbot';
 import { 
@@ -82,14 +83,75 @@ const THEME = {
   dark: '#050505', // Deep Night
 };
 
+const LEGAL_CONTENT = {
+  privacy: {
+    title: "Privacy Policy",
+    content: `TechTaire Message respects your privacy and is committed to protecting the information of users who access and use this website.
+
+Information We Collect:
+- Name or contact details if provided by the user
+- Phone numbers used for sending messages
+- Message content entered into the platform
+- Device information such as browser type and operating system
+- IP address and basic usage data
+
+The collected information may be used to operate the messaging platform, improve functionality, prevent misuse, and maintain system security.
+
+Our platform may use the WhatsApp Business API provided by Meta Platforms for messaging services.`
+  },
+  terms: {
+    title: "Terms and Conditions",
+    content: `- Users must use the platform only for legal and responsible purposes.
+- Sending spam, abusive, or harmful content is prohibited.
+- Users must not attempt to hack, damage, or disrupt the platform.
+- We reserve the right to suspend users who violate these terms.
+- The service is provided 'as is' without guarantees of uninterrupted operation.`
+  },
+  copyright: {
+    title: "Copyright Notice",
+    content: `© 2026 TechTaire Message – Trio Developers.
+All Rights Reserved. All website content including code, design, graphics, and text are the intellectual property of TechTaire Message and Trio Developers.`
+  },
+  trade: {
+    title: "Trade Terms and Conditions",
+    content: `- The platform may be used for business or personal messaging purposes.
+- Users must not promote illegal products or services.
+- Fraudulent marketing or spam campaigns are prohibited.
+- Users are responsible for the content they send through the platform.`
+  },
+  disclaimer: {
+    title: "Disclaimer",
+    content: `The information and services provided on this website are offered 'as is'. We do not guarantee uninterrupted or error-free operation.`
+  },
+  about: {
+    title: "About Us",
+    content: `Trio Developers is a small team focused on building modern web applications and digital tools such as TechTaire Message.
+
+Instagram: https://www.instagram.com/trio_developers_?igsh=c3MxNjkyNjNjZ2Vr
+Email: triodevelopers003@gmail.com
+Mobile: +91 9551522030`
+  }
+};
+
+const MESSAGE_TEMPLATES = [
+  { id: 1, title: 'Welcome', content: "Hello! Welcome to our service. We're excited to have you on board. Feel free to reach out anytime!" },
+  { id: 2, title: 'Offer', content: "🎉 Special Offer! Get 20% off on all our services today only. Limited time deal — don't miss out!" },
+  { id: 3, title: 'Reminder', content: "Hi! This is a friendly reminder about your upcoming appointment. Please confirm your availability." },
+  { id: 4, title: 'Follow Up', content: "Hello! Just following up on our previous conversation. Please let us know if you need any assistance." },
+  { id: 5, title: 'Thank You', content: "Thank you for choosing us! Your trust means everything to us. We look forward to serving you again." },
+  { id: 6, title: 'Order Confirmation', content: "Your order has been confirmed! 🎊 We will process it shortly and keep you updated on the status." },
+  { id: 7, title: 'Payment Reminder', content: "Gentle reminder: Your payment is due soon. Please complete the payment to avoid any interruption." },
+  { id: 8, title: 'Promotional', content: "🚀 Exciting news! We have launched new features just for you. Check it out and let us know your feedback!" },
+];
+
 // --- Components ---
 
 const TechtaireLogo = ({ className = "w-10 h-10" }: { className?: string }) => (
   <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <linearGradient id="logo-grad" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
-        <stop stopColor="#6366F1" />
-        <stop offset="1" stopColor="#A855F7" />
+        <stop stopColor="#06B6D4" />
+        <stop offset="1" stopColor="#2DD4BF" />
       </linearGradient>
       <filter id="glow">
         <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
@@ -99,29 +161,141 @@ const TechtaireLogo = ({ className = "w-10 h-10" }: { className?: string }) => (
         </feMerge>
       </filter>
     </defs>
-    <path d="M20 35C20 26.7157 26.7157 20 35 20H65C73.2843 20 80 26.7157 80 35V65C80 73.2843 73.2843 80 65 80H35C26.7157 80 20 73.2843 20 65V35Z" fill="url(#logo-grad)" filter="url(#glow)" />
-    <path d="M35 42H65M35 50H65M35 58H50" stroke="white" strokeWidth="5" strokeLinecap="round" />
-    <circle cx="70" cy="30" r="5" fill="white" />
+    <path 
+      d="M50 5L93.3 30V80L50 105L6.7 80V30L50 5Z" 
+      fill="url(#logo-grad)" 
+      filter="url(#glow)"
+      className="opacity-20"
+    />
+    <path 
+      d="M50 15L80.3 32.5V72.5L50 90L19.7 72.5V32.5L50 15Z" 
+      stroke="url(#logo-grad)" 
+      strokeWidth="4" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+      filter="url(#glow)"
+    />
+    <path 
+      d="M50 35L63 42.5V57.5L50 65L37 57.5V42.5L50 35Z" 
+      fill="url(#logo-grad)"
+    />
   </svg>
 );
 
-const Notification = ({ message, type, onClose }: { message: string, type: 'success' | 'error', onClose: () => void }) => (
-  <motion.div
-    initial={{ opacity: 0, y: -50, x: '-50%' }}
-    animate={{ opacity: 1, y: 20, x: '-50%' }}
-    exit={{ opacity: 0, y: -50, x: '-50%' }}
-    className={cn(
-      "fixed top-0 left-1/2 z-[200] px-8 py-4 rounded-2xl shadow-2xl border backdrop-blur-xl flex items-center gap-4 min-w-[320px]",
-      type === 'success' ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-red-500/10 border-red-500/20 text-red-400"
-    )}
-  >
-    {type === 'success' ? <CheckCircle2 size={24} /> : <AlertCircle size={24} />}
-    <span className="font-bold tracking-tight">{message}</span>
-    <button onClick={onClose} className="ml-auto p-1 hover:bg-white/5 rounded-lg transition-colors">
-      <X size={18} />
-    </button>
-  </motion.div>
-);
+const SplashScreen = () => {
+  return (
+    <motion.div 
+      initial={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.8, ease: "easeInOut" }}
+      className="fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center"
+    >
+      <motion.div
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 1, ease: "easeOut" }}
+        className="flex flex-col items-center"
+      >
+        <TechtaireLogo className="w-32 h-32 mb-6" />
+        <motion.h1 
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.5, duration: 0.8 }}
+          className="text-4xl font-black text-white tracking-tighter mb-8"
+        >
+          TechTaire
+        </motion.h1>
+        
+        <div className="w-48 h-1.5 bg-white/10 rounded-full overflow-hidden relative">
+          <motion.div 
+            initial={{ x: "-100%" }}
+            animate={{ x: "0%" }}
+            transition={{ duration: 2, ease: "easeInOut" }}
+            className="absolute inset-0 bg-amethyst"
+          />
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
+interface ToastProps {
+  message: string;
+  type: 'success' | 'error' | 'info' | 'warning';
+  onClose: () => void;
+}
+
+const Toast: React.FC<ToastProps> = ({ message, type, onClose }) => {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 3000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  const icons = {
+    success: <CheckCircle2 size={18} className="text-emerald-400" />,
+    error: <AlertCircle size={18} className="text-red-400" />,
+    info: <Clock size={18} className="text-blue-400" />,
+    warning: <AlertCircle size={18} className="text-amber-400" />
+  };
+
+  const colors = {
+    success: "border-emerald-500",
+    error: "border-red-500",
+    info: "border-blue-500",
+    warning: "border-amber-500"
+  };
+
+  return (
+    <motion.div
+      initial={{ x: 100, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{ x: 100, opacity: 0 }}
+      className={cn(
+        "flex items-center gap-3 px-6 py-4 bg-deep-night/90 backdrop-blur-xl border-l-4 rounded-r-2xl shadow-2xl min-w-[300px]",
+        colors[type]
+      )}
+    >
+      {icons[type]}
+      <p className="text-sm font-bold text-white">{message}</p>
+      <button onClick={onClose} className="ml-auto text-soft-lavender/40 hover:text-white transition-colors">
+        <X size={16} />
+      </button>
+    </motion.div>
+  );
+};
+
+const WelcomePopup = ({ userName, onStart }: { userName: string, onStart: () => void }) => {
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm"
+    >
+      <motion.div 
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        className="max-w-md w-full glass-panel p-10 text-center relative overflow-hidden group"
+      >
+        <div className="absolute inset-0 bg-amethyst/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+        <div className="relative z-10">
+          <div className="w-20 h-20 bg-amethyst/20 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-[0_0_30px_rgba(153,102,204,0.3)]">
+            <Sparkles size={40} className="text-amethyst" />
+          </div>
+          <h2 className="text-2xl font-black text-white mb-4">Welcome to TechTaire, {userName}! 🎉</h2>
+          <p className="text-soft-lavender/60 mb-10">
+            We're glad to have you here. Start by adding your contacts!
+          </p>
+          <button 
+            onClick={onStart}
+            className="w-full btn-premium py-4 text-lg"
+          >
+            Get Started
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
 
 const TrialTimer = ({ expiry }: { expiry: string }) => {
   const [timeLeft, setTimeLeft] = useState<number>(0);
@@ -348,6 +522,101 @@ const FeatureCard = ({ icon: Icon, title, description, index }: { icon: any, tit
   );
 };
 
+const LegalModal = ({ type, onClose }: { type: 'privacy' | 'terms' | 'copyright' | 'trade' | 'disclaimer' | 'about', onClose: () => void }) => {
+  const content = LEGAL_CONTENT[type];
+  
+  const renderContent = () => {
+    if (type === 'about') {
+      return (
+        <div className="space-y-6">
+          <p>Trio Developers is a small team focused on building modern web applications and digital tools such as TechTaire Message.</p>
+          <div className="space-y-3 pt-4 border-t border-white/5">
+            <div className="flex items-center gap-3">
+              <span className="text-white font-bold w-20">Instagram:</span>
+              <a 
+                href="https://www.instagram.com/trio_developers_?igsh=c3MxNjkyNjNjZ2Vr" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-amethyst hover:underline"
+              >
+                @trio_developers_
+              </a>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-white font-bold w-20">Email:</span>
+              <a href="mailto:triodevelopers003@gmail.com" className="text-amethyst hover:underline">
+                triodevelopers003@gmail.com
+              </a>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-white font-bold w-20">Mobile:</span>
+              <a href="tel:+919551522030" className="text-amethyst hover:underline">
+                +91 9551522030
+              </a>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return <div className="whitespace-pre-wrap">{content.content}</div>;
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-6">
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="absolute inset-0 bg-black/90 backdrop-blur-md" 
+        onClick={onClose} 
+      />
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        className="relative w-full max-w-2xl glass-panel p-10 overflow-hidden"
+      >
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-royal-purple via-amethyst to-royal-purple" />
+        <button 
+          onClick={onClose}
+          className="absolute top-6 right-6 p-2 hover:bg-white/10 rounded-xl text-soft-lavender/40 hover:text-white transition-colors"
+        >
+          <X size={24} />
+        </button>
+        <h3 className="text-3xl font-black text-white tracking-tight mb-8">{content.title}</h3>
+        <div className="text-soft-lavender/60 leading-relaxed space-y-4 max-h-[60vh] overflow-y-auto pr-4 custom-scrollbar">
+          {renderContent()}
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const Footer = ({ onOpenModal }: { onOpenModal: (type: 'privacy' | 'terms' | 'copyright' | 'trade' | 'disclaimer' | 'about') => void }) => {
+  return (
+    <footer className="fixed bottom-4 right-4 z-[60] flex items-center gap-6 px-6 py-2 pointer-events-auto">
+      <button 
+        onClick={() => onOpenModal('privacy')}
+        className="text-[10px] font-bold text-soft-lavender/40 hover:text-white transition-colors uppercase tracking-widest"
+      >
+        Privacy Policy
+      </button>
+      <button 
+        onClick={() => onOpenModal('terms')}
+        className="text-[10px] font-bold text-soft-lavender/40 hover:text-white transition-colors uppercase tracking-widest"
+      >
+        Terms & Conditions
+      </button>
+      <button 
+        onClick={() => onOpenModal('copyright')}
+        className="text-[10px] font-bold text-soft-lavender/40 hover:text-white transition-colors uppercase tracking-widest"
+      >
+        Copyright Notice
+      </button>
+    </footer>
+  );
+};
+
 const PricingCard = ({ plan, isPremium = false, onSelect }: { plan: any, isPremium?: boolean, onSelect: (plan: any) => void, key?: any }) => {
   const handleSelect = () => {
     confetti({
@@ -429,14 +698,27 @@ const DashboardStat = ({ label, value, icon: Icon, color }: { label: string, val
 // --- Main App Component ---
 
 export default function App() {
+  const [view, setView] = useState<View>(() => {
+    const savedView = localStorage.getItem('techtaire_active_view');
+    if (savedView && ['landing', 'dashboard', 'contacts', 'messaging', 'history', 'plans', 'settings', 'admin', 'login', 'pricing', 'contact', 'guide'].includes(savedView)) {
+      return savedView as View;
+    }
+    return 'landing';
+  });
+
   useEffect(() => {
-  document.title = "Techtaire";
-}, []);
-  const [view, setView] = useState<View>('landing');
+    localStorage.setItem('techtaire_active_view', view);
+  }, [view]);
+
+  useEffect(() => {
+    document.title = "Techtaire";
+  }, []);
   const [isIntroComplete, setIsIntroComplete] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [showSplash, setShowSplash] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [logoClicks, setLogoClicks] = useState(0);
   const isAdmin = user?.email === 'prajwalnawale3040@gmail.com';
@@ -444,11 +726,39 @@ export default function App() {
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
-  const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+  const [toasts, setToasts] = useState<{ id: number, message: string, type: 'success' | 'error' | 'info' | 'warning' }[]>([]);
+  const [legalModal, setLegalModal] = useState<'privacy' | 'terms' | 'copyright' | null>(null);
 
-  const showNotify = (message: string, type: 'success' | 'error' = 'success') => {
-    setNotification({ message, type });
-    setTimeout(() => setNotification(null), 5000);
+  const showNotify = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+  };
+
+  const removeToast = (id: number) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowSplash(false);
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (user && !loading) {
+      const hasSeenWelcome = localStorage.getItem(`welcome_${user.id}`);
+      if (!hasSeenWelcome) {
+        setShowWelcome(true);
+      }
+    }
+  }, [user, loading]);
+
+  const handleWelcomeStart = () => {
+    if (user) {
+      localStorage.setItem(`welcome_${user.id}`, 'true');
+    }
+    setShowWelcome(false);
   };
 
   const handlePayment = async (plan: any) => {
@@ -615,45 +925,46 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  const fetchProfile = async () => {
+    if (!user) return;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      
+      if (data) {
+        setProfile(data);
+      } else if (!error || error.code === 'PGRST116') {
+        const trialExpiry = new Date();
+        trialExpiry.setMinutes(trialExpiry.getMinutes() + 1);
+        
+        const { data: newProfile, error: insertError } = await supabase
+          .from('profiles')
+          .insert([{ 
+            id: user.id, 
+            email: user.email, 
+            plan: 'free_trial', 
+            credits: 100,
+            trial_expiry: trialExpiry.toISOString(),
+            created_at: new Date().toISOString()
+          }])
+          .select()
+          .single();
+        
+        if (newProfile) setProfile(newProfile);
+        if (insertError) console.error("Profile creation error:", insertError);
+      }
+    } catch (err) {
+      console.error("Unexpected error in fetchProfile:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (user) {
-      const fetchProfile = async () => {
-        try {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', user.id)
-            .single();
-          
-          if (data) {
-            setProfile(data);
-          } else if (!error || error.code === 'PGRST116') {
-            const trialExpiry = new Date();
-            trialExpiry.setMinutes(trialExpiry.getMinutes() + 1);
-            
-            const { data: newProfile, error: insertError } = await supabase
-              .from('profiles')
-              .insert([{ 
-                id: user.id, 
-                email: user.email, 
-                plan: 'free_trial', 
-                credits: 100,
-                trial_expiry: trialExpiry.toISOString(),
-                created_at: new Date().toISOString()
-              }])
-              .select()
-              .single();
-            
-            if (newProfile) setProfile(newProfile);
-            if (insertError) console.error("Profile creation error:", insertError);
-          }
-        } catch (err) {
-          console.error("Unexpected error in fetchProfile:", err);
-        } finally {
-          setLoading(false);
-        }
-      };
-
       fetchProfile();
 
       // Subscribe to profile changes
@@ -791,14 +1102,31 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
   return (
     <div className="min-h-screen bg-deep-night text-soft-lavender font-sans selection:bg-royal-purple/30">
       <AnimatePresence>
-        {notification && (
-          <Notification 
-            message={notification.message} 
-            type={notification.type} 
-            onClose={() => setNotification(null)} 
+        {showSplash && <SplashScreen />}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showWelcome && user && (
+          <WelcomePopup 
+            userName={profile?.email?.split('@')[0] || user.email.split('@')[0]} 
+            onStart={handleWelcomeStart} 
           />
         )}
       </AnimatePresence>
+
+      <div className="fixed top-6 right-6 z-[9999] flex flex-col gap-4">
+        <AnimatePresence>
+          {toasts.map(toast => (
+            <Toast 
+              key={toast.id}
+              message={toast.message}
+              type={toast.type}
+              onClose={() => removeToast(toast.id)}
+            />
+          ))}
+        </AnimatePresence>
+      </div>
+
       <CustomCursor />
       <Particles />
       
@@ -887,12 +1215,12 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
                   transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                 >
                   {view === 'dashboard' && <DashboardView user={user} profile={profile} setView={setView} />}
-                  {view === 'contacts' && <ContactsView user={user} />}
+                  {view === 'contacts' && <ContactsView user={user} showNotify={showNotify} />}
                   {view === 'messaging' && <MessagingView profile={profile} user={user} showNotify={showNotify} />}
-                  {view === 'history' && <HistoryView user={user} />}
+                  {view === 'history' && <HistoryView user={user} showNotify={showNotify} />}
                   {view === 'guide' && <GuideView setView={setView} />}
                   {view === 'plans' && <PricingPage setView={setView} isDashboard onSelect={handlePayment} />}
-                  {view === 'settings' && <SettingsView profile={profile} />}
+                  {view === 'settings' && <SettingsView profile={profile} onUpdate={fetchProfile} onOpenModal={(type) => setLegalModal(type)} showNotify={showNotify} />}
                   {view === 'admin' && <AdminView user={user} />}
                 </motion.div>
               </AnimatePresence>
@@ -1007,6 +1335,14 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
         </div>
       )}
       {user && <AIChatbot />}
+
+      <Footer onOpenModal={(type) => setLegalModal(type)} />
+
+      <AnimatePresence>
+        {legalModal && (
+          <LegalModal type={legalModal} onClose={() => setLegalModal(null)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1968,7 +2304,7 @@ const ContactPage = () => {
 
 // --- Sub-Views ---
 
-function ContactsView({ user }: { user: any }) {
+function ContactsView({ user, showNotify }: { user: any, showNotify: (m: string, t?: 'success' | 'error' | 'info' | 'warning') => void }) {
   const [contacts, setContacts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1985,13 +2321,24 @@ function ContactsView({ user }: { user: any }) {
   const fetchContacts = async () => {
     if (!user) return;
     setLoading(true);
+    
+    // Try to load from Supabase
     const { data, error } = await supabase
       .from('contacts')
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
     
-    if (data) setContacts(data);
+    if (data && data.length > 0) {
+      setContacts(data);
+      localStorage.setItem(`techtaire_contacts_${user.id}`, JSON.stringify(data));
+    } else {
+      // Fallback to localStorage
+      const saved = localStorage.getItem(`techtaire_contacts_${user.id}`);
+      if (saved) {
+        setContacts(JSON.parse(saved));
+      }
+    }
     setLoading(false);
   };
 
@@ -2102,8 +2449,9 @@ function ContactsView({ user }: { user: any }) {
       const { error } = await supabase.from('contacts').insert(contactsToInsert);
       if (error) {
         console.error("Add Batch Error:", error);
-        alert(error.message);
+        showNotify(error.message, "error");
       } else {
+        showNotify("✅ Contact batch added successfully!", "success");
         setShowAddModal(false);
         setNewContact({ name: '', whatsapp_number: '', batch: '', course: '' });
         fetchContacts();
@@ -2119,8 +2467,9 @@ function ContactsView({ user }: { user: any }) {
       const { error } = await supabase.from('contacts').insert([contactToInsert]);
       if (error) {
         console.error("Add Contact Error:", error);
-        alert(error.message);
+        showNotify(error.message, "error");
       } else {
+        showNotify("✅ Contact added successfully!", "success");
         setShowAddModal(false);
         setNewContact({ name: '', whatsapp_number: '', batch: '', course: '' });
         fetchContacts();
@@ -2132,73 +2481,99 @@ function ContactsView({ user }: { user: any }) {
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
+    const processData = async (data: any[]) => {
+      if (data.length === 0) {
+        showNotify("No data found in file.", "error");
+        return;
+      }
+
+      const formattedData = data.map((row: any) => {
+        // Auto-detect columns
+        const keys = Object.keys(row);
+        const nameKey = keys.find(k => /name|student|full.*name|contact.*person/i.test(k));
+        const phoneKey = keys.find(k => /phone|number|mobile|contact|whatsapp/i.test(k));
+        const batchKey = keys.find(k => /batch|class|group|section/i.test(k));
+        const courseKey = keys.find(k => /course|subject|program/i.test(k));
+
+        const name = nameKey ? row[nameKey] : 'Unknown';
+        const rawNumber = phoneKey ? row[phoneKey] : '';
+        const whatsapp_number = String(rawNumber).replace(/\D/g, '');
+        const batch = batchKey ? row[batchKey] : '';
+        const course = courseKey ? row[courseKey] : '';
+
+        return {
+          user_id: user.id,
+          name: String(name).trim(),
+          whatsapp_number,
+          batch: String(batch).trim(),
+          course: String(course).trim(),
+          status: 'active'
+        };
+      }).filter(c => c.whatsapp_number && c.whatsapp_number.length >= 10);
+
+      if (formattedData.length === 0) {
+        showNotify("Invalid file format. Please ensure the file has Name and Phone Number columns.", "error");
+        return;
+      }
+
       try {
-        const dataBuffer = evt.target?.result;
-        const wb = XLSX.read(dataBuffer, { type: 'array' });
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws);
-
-        console.log("Excel Data Parsed:", data);
-
-        if (data.length === 0) {
-          alert("No data found in Excel file.");
-          return;
-        }
-
-        // Map and insert
-        const formattedData = data.map((row: any) => {
-          // Find name column
-          const name = row.Name || row.name || row.StudentName || row.Student || row['Student Name'] || row['Full Name'] || row.FullName || 'Unknown';
-          
-          // Find number column
-          const rawNumber = row.Number || row.number || row.Phone || row.phone || row.WhatsApp || row['WhatsApp Number'] || row['Phone Number'] || row.Contact || row.Mobile || '';
-          const whatsapp_number = String(rawNumber).replace(/\D/g, '');
-          
-          // Find batch/course
-          const batch = row.Batch || row.batch || row.Class || row.class || row.Group || row.group || '';
-          const course = row.Course || row.course || row.Subject || row.subject || '';
-
-          return {
-            user_id: user.id,
-            name,
-            whatsapp_number,
-            batch,
-            course,
-            status: 'active'
-          };
-        }).filter(c => c.whatsapp_number && c.whatsapp_number.length >= 10);
-
-        console.log("Formatted Data for Insert:", formattedData);
-
-        if (formattedData.length === 0) {
-          alert("No valid contacts found. Please ensure the Excel has 'Name' and 'Number' columns. (Numbers must be at least 10 digits)");
-          return;
-        }
-
         const { error } = await supabase.from('contacts').insert(formattedData);
-        if (error) {
-          console.error("Import Error:", error);
-          alert("Database Error: " + error.message);
-        } else {
-          alert(`Successfully imported ${formattedData.length} contacts`);
-          fetchContacts();
-        }
+        if (error) throw error;
+        
+        // Update local state and storage
+        const updatedContacts = [...formattedData, ...contacts];
+        setContacts(updatedContacts);
+        localStorage.setItem(`techtaire_contacts_${user.id}`, JSON.stringify(updatedContacts));
+        
+        showNotify(`✅ ${formattedData.length} contacts imported successfully!`, "success");
+        fetchContacts();
       } catch (err: any) {
-        console.error("Excel Parsing Error:", err);
-        alert("Failed to parse Excel file. Please ensure it's a valid .xlsx or .csv file.");
+        showNotify("Import Error: " + err.message, "error");
       }
     };
-    reader.readAsArrayBuffer(file);
+
+    if (file.name.endsWith('.csv')) {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          processData(results.data);
+        },
+        error: (err) => {
+          showNotify("Failed to parse CSV file: " + err.message, "error");
+        }
+      });
+    } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const dataBuffer = evt.target?.result;
+          const wb = XLSX.read(dataBuffer, { type: 'array' });
+          const wsname = wb.SheetNames[0];
+          const ws = wb.Sheets[wsname];
+          const data = XLSX.utils.sheet_to_json(ws);
+          processData(data);
+        } catch (err: any) {
+          showNotify("Failed to parse Excel file.", "error");
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      showNotify("Invalid file format. Please use Excel or CSV file.", "error");
+    }
+    
+    // Reset input
+    e.target.value = '';
   };
 
   const handleDeleteAll = async () => {
     if (!confirm("Are you sure you want to delete ALL contacts? This cannot be undone.")) return;
     const { error } = await supabase.from('contacts').delete().eq('user_id', user.id);
-    if (error) alert(error.message);
-    else fetchContacts();
+    if (error) showNotify(error.message, "error");
+    else {
+      showNotify("🗑️ All contacts deleted.", "warning");
+      fetchContacts();
+    }
   };
 
   return (
@@ -2326,9 +2701,17 @@ function ContactsView({ user }: { user: any }) {
             animate={{ opacity: 1, scale: 1 }}
             className="relative w-full max-w-md glass-panel p-10"
           >
-            <h3 className="text-2xl font-black text-white mb-8 tracking-tight">
-              {isBatch ? 'Add New Batch' : 'Add New Contact'}
-            </h3>
+            <div className="flex justify-between items-center mb-8">
+              <h3 className="text-2xl font-black text-white tracking-tight">
+                {isBatch ? 'Add New Batch' : 'Add New Contact'}
+              </h3>
+              <button 
+                onClick={() => setShowAddModal(false)}
+                className="p-2 hover:bg-white/10 rounded-xl text-soft-lavender/40 hover:text-white transition-all"
+              >
+                <X size={24} />
+              </button>
+            </div>
             <form onSubmit={handleAddContact} className="space-y-6">
               {isBatch ? (
                 <>
@@ -2443,7 +2826,7 @@ function ContactsView({ user }: { user: any }) {
   );
 }
 
-function MessagingView({ profile, user, showNotify }: { profile: any, user: any, showNotify: (m: string, t?: 'success' | 'error') => void }) {
+function MessagingView({ profile, user, showNotify }: { profile: any, user: any, showNotify: (m: string, t?: 'success' | 'error' | 'info' | 'warning') => void }) {
   const [message, setMessage] = useState('');
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [sending, setSending] = useState(false);
@@ -2455,8 +2838,14 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
   const [isScheduled, setIsScheduled] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   const isExpired = profile?.plan === 'free_trial' && profile?.trial_expiry && new Date(profile.trial_expiry) < new Date();
+  
+  const charCount = message.length;
+  const maxChars = 4096;
+  const isWarning = charCount >= 3500 && charCount < 4000;
+  const isDanger = charCount >= 4000;
   
   useEffect(() => {
     if (user) fetchBatches();
@@ -2514,6 +2903,10 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
     }
   };
 
+  const cleanPhoneNumber = (num: string) => {
+    return num.replace(/\D/g, ''); // Remove all non-digits
+  };
+
   const handleSend = async () => {
     if (isExpired) {
       alert("Your free trial has expired. Please upgrade to continue.");
@@ -2522,6 +2915,11 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
     if (!message && !attachment) return;
     if (!user) return;
     
+    console.log("WhatsApp API Config:", {
+      apiKey: profile.whatsapp_api_key ? "Configured (Hidden)" : "Missing",
+      phoneNumberId: profile.whatsapp_phone_number_id || "Missing"
+    });
+
     if (!profile.whatsapp_api_key || !profile.whatsapp_phone_number_id) {
       alert("Please configure your WhatsApp API settings first.");
       return;
@@ -2529,10 +2927,16 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
 
     setSending(true);
     try {
-      if (isScheduled && scheduleDate && scheduleTime) {
+      if (isScheduled) {
+        if (!scheduleDate || !scheduleTime) {
+          alert("Please select both date and time for scheduling.");
+          setSending(false);
+          return;
+        }
+
         const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}`);
         if (scheduledAt < new Date()) {
-          alert("Schedule time must be in the future.");
+          alert("Please select a future date and time");
           setSending(false);
           return;
         }
@@ -2544,13 +2948,18 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
           status: 'scheduled',
           scheduled_at: scheduledAt.toISOString(),
           batch: selectedBatch,
-          attachment_url: attachmentPreview
+          attachment_url: attachmentPreview,
+          total_messages: contactCount,
+          sent_messages: 0
         }]);
 
-        showNotify("Campaign scheduled successfully!", "success");
+        showNotify(`🕐 Campaign scheduled for ${new Date(scheduleDate).toLocaleDateString()} at ${scheduleTime}`, "info");
         setMessage('');
         setAttachment(null);
         setAttachmentPreview(null);
+        setIsScheduled(false);
+        setScheduleDate('');
+        setScheduleTime('');
         setSending(false);
         return;
       }
@@ -2601,16 +3010,17 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
         if (successCount >= maxMessages) break;
         
         const contact = contactsToSend[i];
+        const cleanNumber = cleanPhoneNumber(contact.whatsapp_number);
         
         // Skip empty numbers
-        if (!contact.whatsapp_number || contact.whatsapp_number.trim() === '') {
+        if (!cleanNumber) {
           console.warn(`Skipping contact with empty WhatsApp number: ${contact.name}`);
           continue;
         }
 
         try {
           await axios.post('/api/whatsapp/send', {
-            to: contact.whatsapp_number,
+            to: cleanNumber,
             message,
             apiKey: profile.whatsapp_api_key,
             phoneNumberId: profile.whatsapp_phone_number_id,
@@ -2622,6 +3032,10 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
           const errorData = e.response?.data;
           let msg = errorData?.error?.message || errorData?.message || e.message;
           
+          // Add full error details for debugging
+          const fullError = JSON.stringify(errorData || e.message, null, 2);
+          console.error(`WhatsApp API Error for ${cleanNumber}:`, fullError);
+          
           if (status === 401) {
             const subcode = errorData?.error?.error_subcode;
             if (subcode === 463) {
@@ -2632,15 +3046,14 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
           } else if (status === 400) {
             const errorMsg = errorData?.error?.message || "";
             if (errorMsg.includes("not in the allowed list")) {
-              msg = `400 Bad Request: Recipient ${contact.whatsapp_number} is not in your Meta App's "Test Numbers" list. In Development mode, you can only send to verified test numbers.`;
+              msg = `400 Bad Request: Recipient ${cleanNumber} is not in your Meta App's "Test Numbers" list. In Development mode, you can only send to verified test numbers.`;
             } else {
               msg = `400 Bad Request: ${msg}`;
             }
           }
 
-          console.error(`Failed to send to ${contact.whatsapp_number}`, e);
           if (!errorMessages.includes(msg)) {
-            errorMessages.push(msg);
+            errorMessages.push(`${msg}\nFull API Response: ${fullError}`);
           }
         }
       }
@@ -2656,11 +3069,13 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
       }]);
 
       if (successCount === 0 && contactsToSend.length > 0) {
+        showNotify("❌ Failed to send campaign. Please check your API settings.", "error");
         alert(`Campaign failed! Sent to 0/${contactsToSend.length} contacts.\n\nErrors encountered:\n${errorMessages.join('\n')}\n\nTroubleshooting tips:\n1. Ensure your WhatsApp API Key and Phone Number ID are correct in Settings.\n2. Ensure contact numbers include the country code (e.g., 91 for India) without the '+' sign.\n3. If your Meta app is in Development mode, you MUST add the recipient's number to the "Test Numbers" list in your Meta Dashboard.\n4. Check your Meta App's "API Setup" page to see if your token has expired.`);
       } else if (successCount < contactsToSend.length) {
+        showNotify(`Campaign partially completed! Sent to ${successCount}/${contactsToSend.length} contacts.`, "warning");
         alert(`Campaign partially completed! Sent to ${successCount}/${contactsToSend.length} contacts.\n\nSome messages failed. Errors encountered:\n${errorMessages.join('\n')}`);
       } else {
-        alert(`Campaign completed successfully! Sent to ${successCount}/${contactsToSend.length} contacts.`);
+        showNotify(`✅ Campaign sent successfully to ${successCount} contacts!`, "success");
       }
       setMessage('');
       setAttachment(null);
@@ -2688,14 +3103,24 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
         <div className="glass-panel p-8 space-y-6">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-black text-white tracking-tight">Compose Message</h3>
-            <button 
-              onClick={handleEnhance}
-              disabled={isEnhancing || !message || isExpired}
-              className="flex items-center gap-2 text-xs font-black text-amethyst uppercase tracking-widest hover:text-white transition-colors disabled:opacity-50"
-            >
-              <Sparkles size={14} className={isEnhancing ? "animate-pulse" : ""} />
-              <span>{isEnhancing ? "Enhancing..." : "AI Enhance"}</span>
-            </button>
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={() => setShowTemplates(true)}
+                disabled={isExpired}
+                className="flex items-center gap-2 text-xs font-black text-soft-lavender uppercase tracking-widest hover:text-white transition-colors disabled:opacity-50"
+              >
+                <Sparkles size={14} className="text-amethyst" />
+                <span>Templates</span>
+              </button>
+              <button 
+                onClick={handleEnhance}
+                disabled={isEnhancing || !message || isExpired}
+                className="flex items-center gap-2 text-xs font-black text-amethyst uppercase tracking-widest hover:text-white transition-colors disabled:opacity-50"
+              >
+                <Sparkles size={14} className={isEnhancing ? "animate-pulse" : ""} />
+                <span>{isEnhancing ? "Enhancing..." : "AI Enhance"}</span>
+              </button>
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -2735,16 +3160,23 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
                 className="grid grid-cols-2 gap-4 pt-2"
               >
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-soft-lavender/40 uppercase tracking-widest">Date</label>
+                  <label className="text-[10px] font-black text-soft-lavender/40 uppercase tracking-widest flex items-center gap-2">
+                    <Calendar size={12} className="text-amethyst" />
+                    Date
+                  </label>
                   <input 
                     type="date" 
+                    min={new Date().toISOString().split('T')[0]}
                     value={scheduleDate}
                     onChange={(e) => setScheduleDate(e.target.value)}
                     className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white outline-none focus:border-amethyst transition-all"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-soft-lavender/40 uppercase tracking-widest">Time</label>
+                  <label className="text-[10px] font-black text-soft-lavender/40 uppercase tracking-widest flex items-center gap-2">
+                    <Clock size={12} className="text-amethyst" />
+                    Time
+                  </label>
                   <input 
                     type="time" 
                     value={scheduleTime}
@@ -2755,13 +3187,21 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
               </motion.div>
             )}
 
-            <textarea 
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              disabled={isExpired}
-              placeholder="Type your message here..."
-              className="w-full h-64 bg-white/5 border border-white/10 rounded-2xl p-6 text-white outline-none focus:border-amethyst transition-all resize-none disabled:opacity-50"
-            />
+            <div className="relative">
+              <textarea 
+                value={message}
+                onChange={(e) => setMessage(e.target.value.slice(0, maxChars))}
+                disabled={isExpired}
+                placeholder="Type your message here..."
+                className="w-full h-64 bg-white/5 border border-white/10 rounded-2xl p-6 text-white outline-none focus:border-amethyst transition-all resize-none disabled:opacity-50"
+              />
+              <div className={cn(
+                "absolute bottom-4 right-4 text-[10px] font-black transition-colors",
+                isDanger ? "text-red-500" : isWarning ? "text-amber-500" : "text-soft-lavender/40"
+              )}>
+                {charCount} / {maxChars}
+              </div>
+            </div>
           </div>
           
           {attachmentPreview && (
@@ -2837,11 +3277,49 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
           </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {showTemplates && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowTemplates(false)} />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-2xl glass-panel p-10 max-h-[80vh] overflow-hidden flex flex-col"
+            >
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-2xl font-black text-white tracking-tight">Message Templates</h3>
+                <button onClick={() => setShowTemplates(false)} className="p-2 hover:bg-white/10 rounded-xl text-soft-lavender/40 hover:text-white transition-all">
+                  <X size={24} />
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto pr-2 custom-scrollbar">
+                {MESSAGE_TEMPLATES.map(template => (
+                  <button
+                    key={template.id}
+                    onClick={() => {
+                      setMessage(template.content);
+                      setShowTemplates(false);
+                      showNotify("Template applied!", "info");
+                    }}
+                    className="text-left p-6 bg-white/5 border border-white/10 rounded-2xl hover:border-amethyst hover:bg-amethyst/5 transition-all group"
+                  >
+                    <h4 className="font-black text-white mb-2 group-hover:text-amethyst transition-colors">{template.title}</h4>
+                    <p className="text-xs text-soft-lavender/40 line-clamp-3 leading-relaxed">{template.content}</p>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-function HistoryView({ user }: { user: any }) {
+function HistoryView({ user, showNotify }: { user: any, showNotify: (m: string, t?: 'success' | 'error' | 'info' | 'warning') => void }) {
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -2863,8 +3341,21 @@ function HistoryView({ user }: { user: any }) {
   const handleDeleteCampaign = async (id: string) => {
     if (!confirm("Are you sure you want to delete this campaign record?")) return;
     const { error } = await supabase.from('campaigns').delete().eq('id', id);
-    if (error) alert(error.message);
-    else fetchCampaigns();
+    if (error) showNotify(error.message, "error");
+    else {
+      showNotify("🗑️ Campaign record deleted.", "warning");
+      fetchCampaigns();
+    }
+  };
+
+  const handleCancelSchedule = async (id: string) => {
+    if (!confirm("Are you sure you want to cancel this scheduled campaign?")) return;
+    const { error } = await supabase.from('campaigns').delete().eq('id', id);
+    if (error) showNotify(error.message, "error");
+    else {
+      showNotify("🕐 Scheduled campaign cancelled.", "info");
+      fetchCampaigns();
+    }
   };
 
   return (
@@ -2887,26 +3378,55 @@ function HistoryView({ user }: { user: any }) {
           ) : (
             campaigns.map((c) => (
               <tr key={c.id} className="hover:bg-white/5 transition-colors group">
-                <td className="px-6 py-4 font-bold text-white">{c.name}</td>
+                <td className="px-6 py-4 font-bold text-white">
+                  {c.name}
+                  {c.status === 'scheduled' && (
+                    <div className="text-[10px] text-amber-400 font-normal mt-1">
+                      Scheduled for: {new Date(c.scheduled_at).toLocaleString()}
+                    </div>
+                  )}
+                </td>
                 <td className="px-6 py-4">
-                  <span className="px-2 py-1 bg-emerald-500/10 text-emerald-400 text-[10px] font-black rounded-full uppercase">{c.status}</span>
+                  <span className={cn(
+                    "px-2 py-1 text-[10px] font-black rounded-full uppercase",
+                    c.status === 'scheduled' ? "bg-amber-500/10 text-amber-400" : "bg-emerald-500/10 text-emerald-400"
+                  )}>
+                    {c.status}
+                  </span>
                 </td>
                 <td className="px-6 py-4">
                   <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-emerald-500 h-full" style={{ width: `${(c.sent_messages / c.total_messages) * 100}%` }} />
+                    <div 
+                      className={cn("h-full", c.status === 'scheduled' ? "bg-amber-500" : "bg-emerald-500")} 
+                      style={{ width: `${c.total_messages > 0 ? (c.sent_messages / c.total_messages) * 100 : 0}%` }} 
+                    />
                   </div>
-                  <div className="text-[10px] text-soft-lavender/40 mt-1">{c.sent_messages} / {c.total_messages} sent</div>
+                  <div className="text-[10px] text-soft-lavender/40 mt-1">{c.sent_messages} / {c.total_messages} {c.status === 'scheduled' ? 'queued' : 'sent'}</div>
                 </td>
-                <td className="px-6 py-4 text-soft-lavender/60 text-sm">{new Date(c.created_at).toLocaleDateString()}</td>
+                <td className="px-6 py-4 text-soft-lavender/60 text-sm">
+                  {c.status === 'scheduled' ? new Date(c.scheduled_at).toLocaleDateString() : new Date(c.created_at).toLocaleDateString()}
+                </td>
                 <td className="px-6 py-4 text-right">
                   <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button className="p-2 hover:bg-white/10 rounded-lg text-soft-lavender/40 hover:text-white"><BarChart3 size={16} /></button>
-                    <button 
-                      onClick={() => handleDeleteCampaign(c.id)}
-                      className="p-2 hover:bg-red-500/10 rounded-lg text-soft-lavender/40 hover:text-red-400"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    {c.status === 'scheduled' ? (
+                      <button 
+                        onClick={() => handleCancelSchedule(c.id)}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 text-amber-400 rounded-lg text-xs font-bold hover:bg-amber-500/20 transition-all"
+                      >
+                        <X size={14} />
+                        Cancel Schedule
+                      </button>
+                    ) : (
+                      <>
+                        <button className="p-2 hover:bg-white/10 rounded-lg text-soft-lavender/40 hover:text-white"><BarChart3 size={16} /></button>
+                        <button 
+                          onClick={() => handleDeleteCampaign(c.id)}
+                          className="p-2 hover:bg-red-500/10 rounded-lg text-soft-lavender/40 hover:text-red-400"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -2918,46 +3438,44 @@ function HistoryView({ user }: { user: any }) {
   );
 }
 
-function SettingsView({ profile }: { profile: any }) {
+function SettingsView({ profile, onUpdate, onOpenModal, showNotify }: { profile: any, onUpdate: () => void, onOpenModal: (type: any) => void, showNotify: (m: string, t?: 'success' | 'error' | 'info' | 'warning') => void }) {
   const [whatsappConfig, setWhatsappConfig] = useState({
     api_key: profile?.whatsapp_api_key || '',
     phone_number_id: profile?.whatsapp_phone_number_id || ''
   });
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<any>(null);
 
   const handleTestConnection = async () => {
     if (!whatsappConfig.api_key || !whatsappConfig.phone_number_id) {
-      alert("Please enter both Access Token and Phone Number ID first.");
+      showNotify("Please enter both Access Token and Phone Number ID first.", "warning");
       return;
     }
 
     setTesting(true);
+    setTestResult(null);
     try {
-      // Test by sending a simple text message to the same number (or just checking token validity)
-      // We'll use the existing proxy endpoint but with a flag or just a dummy message
       const response = await axios.post('/api/whatsapp/send', {
-        to: '919551522030', // Using the user's number from logs as a test target
+        to: '919551522030', 
         message: 'Teachtaire Connection Test: Your WhatsApp API is now correctly configured! ✅',
         apiKey: whatsappConfig.api_key,
         phoneNumberId: whatsappConfig.phone_number_id
       });
 
-      if (response.data) {
-        alert("Success! Connection verified. You can now send campaigns.");
-      }
+      setTestResult({
+        success: true,
+        data: response.data
+      });
+      showNotify("✅ Connection Test Successful! Check your WhatsApp.", "success");
     } catch (e: any) {
-      const status = e.response?.status;
-      const errorData = e.response?.data;
-      let msg = errorData?.error?.message || errorData?.message || e.message;
-
-      if (status === 401) {
-        msg = "Connection Failed (401): Your token is invalid or expired. Please generate a new one.";
-      } else if (status === 400) {
-        msg = `Connection Failed (400): ${msg}`;
-      }
-      
-      alert(msg);
+      const errorData = e.response?.data || e.message;
+      setTestResult({
+        success: false,
+        error: errorData,
+        status: e.response?.status
+      });
+      showNotify("❌ Connection Test Failed. Check the error details.", "error");
     } finally {
       setTesting(false);
     }
@@ -2965,17 +3483,27 @@ function SettingsView({ profile }: { profile: any }) {
 
   const handleSave = async () => {
     setSaving(true);
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        whatsapp_api_key: whatsappConfig.api_key,
-        whatsapp_phone_number_id: whatsappConfig.phone_number_id
-      })
-      .eq('id', profile.id);
-    
-    if (error) alert(error.message);
-    else alert("Settings saved successfully!");
-    setSaving(false);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          whatsapp_api_key: whatsappConfig.api_key,
+          whatsapp_phone_number_id: whatsappConfig.phone_number_id
+        })
+        .eq('id', profile.id);
+      
+      if (error) throw error;
+      
+      // Persist to localStorage as well
+      localStorage.setItem('techtaire_whatsapp_config', JSON.stringify(whatsappConfig));
+      
+      showNotify("✅ Settings saved successfully!", "success");
+      onUpdate();
+    } catch (err: any) {
+      showNotify("Failed to save settings: " + err.message, "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -3022,6 +3550,35 @@ function SettingsView({ profile }: { profile: any }) {
               {testing ? "Testing..." : "Test Connection"}
             </button>
           </div>
+
+          {testResult && (
+            <div className={cn(
+              "p-6 rounded-2xl border animate-in fade-in slide-in-from-top-4 duration-300",
+              testResult.success ? "bg-emerald-500/10 border-emerald-500/20" : "bg-red-500/10 border-red-500/20"
+            )}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className={cn(
+                  "w-8 h-8 rounded-full flex items-center justify-center",
+                  testResult.success ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
+                )}>
+                  {testResult.success ? <Check size={16} /> : <AlertCircle size={16} />}
+                </div>
+                <div>
+                  <h4 className="font-bold text-white">
+                    {testResult.success ? "Connection Successful" : `Connection Failed (${testResult.status || 'Error'})`}
+                  </h4>
+                  <p className="text-xs text-soft-lavender/60">
+                    {testResult.success ? "Your WhatsApp API is correctly configured." : "There was an error connecting to the WhatsApp API."}
+                  </p>
+                </div>
+              </div>
+              <div className="bg-black/20 rounded-xl p-4 overflow-x-auto">
+                <pre className="text-[10px] font-mono text-soft-lavender/80">
+                  {JSON.stringify(testResult.success ? testResult.data : testResult.error, null, 2)}
+                </pre>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -3048,6 +3605,59 @@ function SettingsView({ profile }: { profile: any }) {
         </div>
         <div className="space-y-4">
           <button className="w-full py-4 bg-royal-purple text-white rounded-2xl font-bold hover:shadow-lg hover:shadow-royal-purple/20 transition-all">Upgrade Subscription</button>
+        </div>
+      </div>
+
+      <div className="glass-panel p-10 space-y-8">
+        <h3 className="text-xl font-black text-white tracking-tight">Information & Support</h3>
+        <div className="grid grid-cols-1 gap-4">
+          <button 
+            onClick={() => onOpenModal('trade')}
+            className="w-full p-6 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-between group hover:bg-white/10 transition-all"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-royal-purple/20 rounded-xl flex items-center justify-center text-amethyst group-hover:bg-royal-purple group-hover:text-white transition-all">
+                <Shield size={24} />
+              </div>
+              <div className="text-left">
+                <p className="font-bold text-white">Trade Terms and Conditions</p>
+                <p className="text-xs text-soft-lavender/40">Business and usage policies</p>
+              </div>
+            </div>
+            <ChevronRight size={20} className="text-soft-lavender/20 group-hover:text-white transition-colors" />
+          </button>
+
+          <button 
+            onClick={() => onOpenModal('disclaimer')}
+            className="w-full p-6 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-between group hover:bg-white/10 transition-all"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-royal-purple/20 rounded-xl flex items-center justify-center text-amethyst group-hover:bg-royal-purple group-hover:text-white transition-all">
+                <AlertCircle size={24} />
+              </div>
+              <div className="text-left">
+                <p className="font-bold text-white">Disclaimer</p>
+                <p className="text-xs text-soft-lavender/40">Service guarantees and limitations</p>
+              </div>
+            </div>
+            <ChevronRight size={20} className="text-soft-lavender/20 group-hover:text-white transition-colors" />
+          </button>
+
+          <button 
+            onClick={() => onOpenModal('about')}
+            className="w-full p-6 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-between group hover:bg-white/10 transition-all"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-royal-purple/20 rounded-xl flex items-center justify-center text-amethyst group-hover:bg-royal-purple group-hover:text-white transition-all">
+                <Users size={24} />
+              </div>
+              <div className="text-left">
+                <p className="font-bold text-white">About Us</p>
+                <p className="text-xs text-soft-lavender/40">Learn more about Trio Developers</p>
+              </div>
+            </div>
+            <ChevronRight size={20} className="text-soft-lavender/20 group-hover:text-white transition-colors" />
+          </button>
         </div>
       </div>
     </div>

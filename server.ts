@@ -49,16 +49,30 @@ const getRazorpay = () => {
   return razorpayInstance;
 };
 
-// Initialize Nodemailer
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || "smtp.gmail.com",
-  port: parseInt(process.env.SMTP_PORT || "587"),
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+// Initialize Nodemailer lazily
+let transporterInstance: nodemailer.Transporter | null = null;
+const getTransporter = () => {
+  if (!transporterInstance) {
+    const user = process.env.SMTP_USER;
+    const pass = process.env.SMTP_PASS;
+    
+    if (!user || !pass) {
+      console.warn("SMTP credentials missing. Emails will not be sent.");
+      return null;
+    }
+
+    transporterInstance = nodemailer.createTransport({
+      host: process.env.SMTP_HOST || "smtp.gmail.com",
+      port: parseInt(process.env.SMTP_PORT || "587"),
+      secure: false,
+      auth: {
+        user,
+        pass,
+      },
+    });
+  }
+  return transporterInstance;
+};
 
 async function startServer() {
   const app = express();
@@ -94,6 +108,11 @@ async function startServer() {
       emailHtml = getLoginAlertEmail(to, data.time, data.browser, data.ip);
     } else if (type === 'password_reset') {
       emailHtml = getPasswordResetEmail(to, data.resetLink);
+    }
+
+    const transporter = getTransporter();
+    if (!transporter) {
+      return res.status(500).json({ error: "Email service is not configured. Please set SMTP_USER and SMTP_PASS in environment variables." });
     }
 
     try {
@@ -282,13 +301,18 @@ async function startServer() {
           // 3. Send Payment Success Email
           if (profile?.email) {
             try {
-              await transporter.sendMail({
-                from: `"Teachtaire Notifications" <${process.env.SMTP_USER}>`,
-                to: profile.email,
-                subject: 'Payment Successful - Teachtaire',
-                html: getPaymentSuccessEmail(profile.email, planName, (payment.amount / 100).toString()),
-              });
-              console.log("Payment success email sent to:", profile.email);
+              const transporter = getTransporter();
+              if (transporter) {
+                await transporter.sendMail({
+                  from: `"Teachtaire Notifications" <${process.env.SMTP_USER}>`,
+                  to: profile.email,
+                  subject: 'Payment Successful - Teachtaire',
+                  html: getPaymentSuccessEmail(profile.email, planName, (payment.amount / 100).toString()),
+                });
+                console.log("Payment success email sent to:", profile.email);
+              } else {
+                console.warn("Skipping payment success email: SMTP not configured");
+              }
             } catch (e) {
               console.error("Failed to send payment success email", e);
             }
@@ -422,8 +446,10 @@ async function startServer() {
       }
 
       console.log(`Sending WhatsApp message to ${to} using Phone Number ID ${PHONE_NUMBER_ID}`);
+      console.log(`Payload:`, JSON.stringify(data, null, 2));
+      
       const response = await axios.post(
-        `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`,
+        `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
         data,
         {
           headers: {
@@ -435,8 +461,9 @@ async function startServer() {
       console.log(`WhatsApp message sent successfully to ${to}`);
       res.json(response.data);
     } catch (error: any) {
-      console.error("WhatsApp Send Error:", error.response?.data || error.message);
-      res.status(error.response?.status || 500).json(error.response?.data || { error: "Failed to send message" });
+      const errorData = error.response?.data || { error: "Failed to send message" };
+      console.error("WhatsApp Send Error:", JSON.stringify(errorData, null, 2));
+      res.status(error.response?.status || 500).json(errorData);
     }
   });
 
