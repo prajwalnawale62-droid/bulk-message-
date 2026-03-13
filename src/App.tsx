@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import emailjs from '@emailjs/browser';
 import axios from 'axios';
 import { 
   LayoutDashboard, 
@@ -29,6 +30,11 @@ import {
   Shield,
   ShieldCheck,
   Zap,
+  Bot,
+  FileSpreadsheet,
+  ClipboardList,
+  PenTool,
+  Rocket,
   Database,
   Calendar,
   BarChart3,
@@ -47,7 +53,8 @@ import {
   Paperclip,
   SendHorizontal,
   Bell,
-  Smile
+  Smile,
+  MessageCircle
 } from 'lucide-react';
 import EmojiPicker, { Theme as EmojiTheme } from 'emoji-picker-react';
 import { motion, AnimatePresence, useScroll, useSpring, useTransform } from 'framer-motion';
@@ -619,7 +626,7 @@ const Footer = ({ onOpenModal }: { onOpenModal: (type: 'privacy' | 'terms' | 'co
   );
 };
 
-const PricingCard = ({ plan, isPremium = false, onSelect }: { plan: any, isPremium?: boolean, onSelect: (plan: any) => void, key?: any }) => {
+const PricingCard = ({ plan, isPremium = false, onSelect, buttonText = "Select Plan" }: { plan: any, isPremium?: boolean, onSelect: (plan: any) => void, buttonText?: string, key?: any }) => {
   const handleSelect = () => {
     confetti({
       particleCount: 150,
@@ -669,7 +676,7 @@ const PricingCard = ({ plan, isPremium = false, onSelect }: { plan: any, isPremi
             : "bg-white/5 border border-white/10 text-white hover:bg-white/10"
         )}
       >
-        Select Plan
+        {buttonText}
       </button>
     </motion.div>
   );
@@ -700,13 +707,7 @@ const DashboardStat = ({ label, value, icon: Icon, color }: { label: string, val
 // --- Main App Component ---
 
 export default function App() {
-  const [view, setView] = useState<View>(() => {
-    const savedView = localStorage.getItem('techtaire_active_view');
-    if (savedView && ['landing', 'dashboard', 'contacts', 'messaging', 'history', 'plans', 'settings', 'admin', 'login', 'pricing', 'contact', 'guide'].includes(savedView)) {
-      return savedView as View;
-    }
-    return 'landing';
-  });
+  const [view, setView] = useState<View>('landing');
 
   useEffect(() => {
     localStorage.setItem('techtaire_active_view', view);
@@ -899,13 +900,9 @@ export default function App() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         setUser(session?.user ?? null);
-        if (session) {
-          const savedView = localStorage.getItem('techtaire_active_view');
-          if (!savedView || savedView === 'landing' || savedView === 'login') {
-            setView('dashboard');
-          }
-        }
-        setLoading(false); // Always set loading to false after session check
+        // Always start at landing page as per user request
+        setView('landing');
+        setLoading(false);
       } catch (err) {
         console.error("Session check error:", err);
         setLoading(false);
@@ -920,18 +917,18 @@ export default function App() {
       
       if (!session) {
         setProfile(null);
-        setView('landing');
-        setLoading(false);
+        // Only switch to landing if we are not already there
+        // This avoids resetting the view if the user is just browsing the landing page
       } else {
-        // If we just signed in or session was found, go to dashboard
-        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
-          const savedView = localStorage.getItem('techtaire_active_view');
-          if (!savedView || savedView === 'landing' || savedView === 'login') {
-            setView('dashboard');
-          }
-          setLoading(false); // Ensure loading is false when session is found
+        // Only switch to dashboard if it's an explicit SIGNED_IN event from the login page
+        // We check localStorage to see if we were in the middle of a login process
+        const isLoggingIn = localStorage.getItem('techtaire_logging_in') === 'true';
+        if (event === 'SIGNED_IN' && isLoggingIn) {
+          setView('dashboard');
+          localStorage.removeItem('techtaire_logging_in');
         }
       }
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
@@ -1119,10 +1116,6 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
     );
   }
 
-  if (!isIntroComplete && view === 'landing') {
-    return <IntroAnimation onComplete={() => { setIsIntroComplete(true); setView('login'); }} />;
-  }
-
   return (
     <div className="min-h-screen bg-deep-night text-soft-lavender font-sans selection:bg-royal-purple/30">
       <AnimatePresence>
@@ -1161,7 +1154,7 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
       />
 
       {view === 'landing' ? (
-        <LandingPage setView={setView} onSelect={handlePayment} />
+        <LandingPage setView={setView} user={user} setLegalModal={setLegalModal} />
       ) : view === 'login' ? (
         <LoginPage setView={setView} />
       ) : (
@@ -1398,376 +1391,489 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, isOpen, disabled }: {
 
 // --- Page Components ---
 
-const LandingPage = ({ setView, onSelect }: { setView: (v: View) => void, onSelect: (plan: any) => void }) => {
-  const [isDarkMode, setIsDarkMode] = useState(true);
-  const [showDemo, setShowDemo] = useState(false);
+const FeedbackModal = ({ onClose }: { onClose: () => void }) => {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [category, setCategory] = useState('Suggestion');
+  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setStatus('idle');
+
+    try {
+      await emailjs.send("service_ayw8b3e", "template_xd2qfba", {
+        name: name,
+        title: category,
+        message: message,
+        email: email
+      }, "TnTWjrOj2IKmPB-LV");
+      
+      setStatus('success');
+      setTimeout(() => {
+        onClose();
+      }, 2000);
+    } catch (error) {
+      console.error('EmailJS Error:', error);
+      setStatus('error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className={cn("relative transition-colors duration-1000", isDarkMode ? "bg-deep-night" : "bg-[#1a0b2e]")}>
-      {/* Navbar */}
-      <nav className="fixed top-0 left-0 right-0 h-24 px-10 flex items-center justify-between z-[60] bg-transparent backdrop-blur-sm">
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm"
+    >
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.9, opacity: 0, y: 20 }}
+        className="glass-panel w-full max-w-md p-8 relative overflow-hidden"
+      >
+        <button 
+          onClick={onClose}
+          className="absolute top-6 right-6 text-soft-lavender/40 hover:text-white transition-colors"
+        >
+          <X size={24} />
+        </button>
+
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-12 h-12 bg-royal-purple/10 rounded-2xl flex items-center justify-center text-royal-purple">
+            <MessageSquare size={24} />
+          </div>
+          <div>
+            <h3 className="text-2xl font-black text-white tracking-tight">We'd Love to Hear From You! 💬</h3>
+            <p className="text-sm text-soft-lavender/40">Share your suggestions, issues, or comments</p>
+          </div>
+        </div>
+
+        {status === 'success' ? (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center py-12"
+          >
+            <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-500 mx-auto mb-6">
+              <CheckCircle2 size={32} />
+            </div>
+            <h4 className="text-xl font-bold text-white mb-2">Thank you!</h4>
+            <p className="text-soft-lavender/60">Your feedback has been sent! ✅</p>
+          </motion.div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="space-y-2">
+              <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Name</label>
+              <input 
+                required
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-5 py-4 bg-white/5 border border-white/10 rounded-2xl text-white focus:border-royal-purple/50 focus:bg-white/10 transition-all outline-none"
+                placeholder="Your Name"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Email</label>
+              <input 
+                required
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-5 py-4 bg-white/5 border border-white/10 rounded-2xl text-white focus:border-royal-purple/50 focus:bg-white/10 transition-all outline-none"
+                placeholder="your@email.com"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Category</label>
+              <select 
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full px-5 py-4 bg-white/5 border border-white/10 rounded-2xl text-white focus:border-royal-purple/50 focus:bg-white/10 transition-all outline-none appearance-none"
+              >
+                <option value="Suggestion">Suggestion</option>
+                <option value="Issue">Issue</option>
+                <option value="Comment">Comment</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Message</label>
+                <span className={cn(
+                  "text-[10px] font-bold",
+                  message.length > 450 ? "text-amber-500" : "text-soft-lavender/20"
+                )}>
+                  {message.length}/500
+                </span>
+              </div>
+              <textarea 
+                required
+                maxLength={500}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                rows={4}
+                className="w-full px-5 py-4 bg-white/5 border border-white/10 rounded-2xl text-white focus:border-royal-purple/50 focus:bg-white/10 transition-all outline-none resize-none"
+                placeholder="Tell us what's on your mind..."
+              />
+            </div>
+
+            {status === 'error' && (
+              <p className="text-xs font-bold text-rose-500 text-center">
+                Something went wrong. Please try again. ❌
+              </p>
+            )}
+
+            <button 
+              type="submit"
+              disabled={loading}
+              className="w-full py-5 bg-royal-purple text-white rounded-2xl font-black text-lg hover:shadow-[0_0_30px_rgba(93,63,211,0.3)] transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Sending...' : 'Send Feedback'}
+            </button>
+          </form>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+};
+
+const LandingPage = ({ setView, user, setLegalModal }: { setView: (v: View) => void, user: any, setLegalModal: (m: 'privacy' | 'terms' | 'copyright' | null) => void }) => {
+  const [showFeedback, setShowFeedback] = useState(false);
+  const { scrollYProgress } = useScroll();
+  const scaleX = useSpring(scrollYProgress, {
+    stiffness: 100,
+    damping: 30,
+    restDelta: 0.001
+  });
+
+  const plans = [
+    { 
+      name: 'Demo Plan', 
+      price: 'Free', 
+      amount: 0, 
+      features: ['1 Day Access', 'Demo Messaging', 'Basic AI Assistant', 'Limited Contacts'], 
+      isDemo: true,
+      description: 'Perfect for exploring our platform features.'
+    },
+    { 
+      name: 'Professional', 
+      price: '2,999', 
+      amount: 2999, 
+      features: ['Unlimited Messages', 'AI Enhancement', 'Priority Support', 'File Attachments', 'Advanced Analytics'],
+      isPopular: true,
+      description: 'The complete solution for growing businesses.'
+    },
+    { 
+      name: 'Enterprise', 
+      price: '17,999', 
+      amount: 17999, 
+      features: ['Everything in Professional', '2 Months Free', 'Dedicated Account Manager', 'Custom API Integration', 'White Label Reports'],
+      description: 'Scale without limits with enterprise-grade power.'
+    }
+  ];
+
+  const features = [
+    { icon: Zap, title: "Bulk Messaging", desc: "Send messages to hundreds of contacts in one click" },
+    { icon: Bot, title: "AI Enhanced", desc: "Use AI to craft perfect messages for your audience" },
+    { icon: BarChart3, title: "Analytics", desc: "Track delivery rates and campaign performance" },
+    { icon: Calendar, title: "Scheduled Messages", desc: "Schedule campaigns for the perfect time" },
+    { icon: FileSpreadsheet, title: "Excel Import", desc: "Import contacts directly from Excel or CSV files" },
+    { icon: ShieldCheck, title: "Secure & Private", desc: "Your data is safe and encrypted at all times" }
+  ];
+
+  const steps = [
+    { icon: ClipboardList, title: "Add Contacts", desc: "Import or manually add your contacts" },
+    { icon: PenTool, title: "Compose Message", desc: "Write or AI-generate your message" },
+    { icon: Rocket, title: "Send Campaign", desc: "Send to all contacts instantly" }
+  ];
+
+  const scrollToSection = (id: string) => {
+    const element = document.getElementById(id);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  const handleGetStarted = () => {
+    if (user) {
+      setView('dashboard');
+    } else {
+      localStorage.setItem('techtaire_logging_in', 'true');
+      setView('login');
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-black text-white selection:bg-royal-purple/30 relative">
+      <motion.div 
+        className="fixed top-0 left-0 right-0 h-1 bg-royal-purple z-[100] origin-left"
+        style={{ scaleX }}
+      />
+
+      {/* Header */}
+      <header className="fixed top-0 left-0 w-full z-50 bg-black/50 backdrop-blur-xl border-b border-white/5 px-6 md:px-10 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <TechtaireLogo />
-          <span className="text-2xl font-black text-white tracking-tighter">Techtaire</span>
+          <TechtaireLogo className="w-10 h-10" />
+          <span className="text-xl font-black tracking-tighter">TechTaire</span>
         </div>
-
-        <div className="hidden md:flex items-center gap-10">
-          {['Features', 'Pricing', 'Testimonials', 'Contact'].map((item) => (
-            <a key={item} href={`#${item.toLowerCase()}`} className="text-sm font-bold text-soft-lavender/60 hover:text-white transition-colors">
-              {item}
-            </a>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-6">
-          <button 
-            onClick={() => setIsDarkMode(!isDarkMode)}
-            className="p-3 bg-white/5 border border-white/10 rounded-2xl text-soft-lavender/60 hover:text-white transition-all"
-          >
-            {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-          </button>
-          <button 
-            onClick={() => setView('login')}
-            className="px-6 py-3 bg-royal-purple text-white rounded-xl font-bold hover:shadow-[0_0_20px_rgba(93,63,211,0.4)] transition-all"
-          >
-            Sign In
-          </button>
-        </div>
-      </nav>
+        <button 
+          onClick={() => setView('login')}
+          className="px-6 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl font-bold text-sm transition-all"
+        >
+          Login
+        </button>
+      </header>
 
       {/* Hero Section */}
-      <section className="min-h-screen flex flex-col items-center justify-center px-6 relative overflow-hidden">
-        <div className="absolute inset-0 grid-bg opacity-30" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-royal-purple/20 blur-[120px] rounded-full animate-pulse" />
-        
-        <div className="relative z-10 text-center max-w-5xl">
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-royal-purple/10 border border-royal-purple/20 rounded-full text-amethyst text-xs font-black uppercase tracking-widest mb-8"
+      <section className="relative pt-48 pb-32 px-6 overflow-hidden">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full pointer-events-none">
+          <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-royal-purple/20 blur-[120px] rounded-full animate-pulse" />
+          <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-amethyst/10 blur-[120px] rounded-full animate-pulse delay-1000" />
+        </div>
+
+        <div className="max-w-5xl mx-auto text-center relative z-10">
+          <motion.h1 
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-5xl md:text-8xl font-black mb-8 tracking-tighter leading-[1.1]"
           >
-            <Sparkles size={14} />
-            <span>The Future of Bulk Messaging</span>
-          </motion.div>
-
-          <h1 className="text-6xl md:text-8xl font-black text-white mb-8 tracking-tighter leading-[0.9]">
-            {"Scale Your Messaging. Automate Everything.".split(" ").map((word, i) => (
-              <motion.span 
-                key={i}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.1, duration: 0.8 }}
-                className="inline-block mr-4"
-              >
-                {word}
-              </motion.span>
-            ))}
-          </h1>
-
+            TechTaire WhatsApp<br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-royal-purple to-amethyst">Bulk Messaging Tool</span>
+          </motion.h1>
           <motion.p 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.8 }}
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.2 }}
             className="text-xl text-soft-lavender/60 mb-12 max-w-2xl mx-auto leading-relaxed"
           >
-            Experience the most magical WhatsApp marketing platform. 
-            Beautifully designed, powerfully automated, and incredibly smooth.
+            The smartest way to send bulk WhatsApp messages to your contacts. Fast, reliable and AI powered.
           </motion.p>
-
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 1 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.4 }}
             className="flex flex-col md:flex-row items-center justify-center gap-6"
           >
             <button 
-              onClick={() => setView('login')}
-              className="btn-premium group"
+              onClick={handleGetStarted}
+              className="w-full md:w-auto px-12 py-5 bg-royal-purple text-white rounded-2xl font-black text-lg hover:shadow-[0_0_40px_rgba(93,63,211,0.4)] transition-all active:scale-95"
             >
-              Get Started Free
-              <ArrowRight className="inline-block ml-2 group-hover:translate-x-1 transition-transform" size={20} />
+              Get Started
             </button>
             <button 
-              onClick={() => setShowDemo(true)}
-              className="px-8 py-4 rounded-2xl font-bold text-white bg-white/5 border border-white/10 hover:bg-white/10 transition-all"
+              onClick={() => scrollToSection('features')}
+              className="w-full md:w-auto px-12 py-5 bg-white/5 border border-white/10 text-white rounded-2xl font-black text-lg hover:bg-white/10 transition-all active:scale-95"
             >
-              Watch Demo
+              Learn More
             </button>
           </motion.div>
-        </div>
-
-        {/* Floating Bubbles */}
-        <div className="absolute inset-0 pointer-events-none">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <motion.div
-              key={i}
-              className="absolute glass-panel p-4 flex items-center gap-3"
-              initial={{ 
-                x: Math.random() * 100 + '%', 
-                y: Math.random() * 100 + '%',
-                opacity: 0,
-                scale: 0.5
-              }}
-              animate={{ 
-                y: [null, '-=50', '+=50'],
-                opacity: [0, 0.6, 0],
-                scale: [0.5, 1, 0.5]
-              }}
-              transition={{ 
-                duration: 5 + Math.random() * 5, 
-                repeat: Infinity,
-                delay: i * 2
-              }}
-            >
-              <div className="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center">
-                <MessageSquare size={16} className="text-white" />
-              </div>
-              <div className="w-24 h-2 bg-white/10 rounded-full" />
-            </motion.div>
-          ))}
         </div>
       </section>
 
       {/* Features Section */}
-      <section className="py-32 px-10 relative">
+      <section id="features" className="py-32 px-6 bg-white/[0.02]">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-20">
-            <h2 className="text-5xl font-black text-white mb-6 tracking-tight">Magical Features</h2>
-            <p className="text-soft-lavender/60 max-w-2xl mx-auto">Everything you need to dominate WhatsApp marketing, wrapped in a premium experience.</p>
-          </div>
-
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-20"
+          >
+            <h2 className="text-4xl md:text-6xl font-black mb-6 tracking-tight">Why Choose TechTaire?</h2>
+            <div className="w-24 h-1.5 bg-royal-purple mx-auto rounded-full" />
+          </motion.div>
+          
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <FeatureCard 
-              index={0}
-              icon={Send} 
-              title="Bulk Messaging" 
-              description="Send thousands of messages with a single click. High delivery rates, zero friction." 
-            />
-            <FeatureCard 
-              index={1}
-              icon={Calendar} 
-              title="Campaign Scheduler" 
-              description="Plan your campaigns weeks in advance. Set it, forget it, watch the results." 
-            />
-            <FeatureCard 
-              index={2}
-              icon={Filter} 
-              title="Smart Filtering" 
-              description="Advanced contact segmentation. Target the right people at the right time." 
-            />
-            <FeatureCard 
-              index={3}
-              icon={BarChart3} 
-              title="Real-time Analytics" 
-              description="Beautiful charts and deep insights into your campaign performance." 
-            />
-            <FeatureCard 
-              index={4}
-              icon={Zap} 
-              title="API Integration" 
-              description="Connect your existing tools with our powerful, developer-friendly API." 
-            />
-            <FeatureCard 
-              index={5}
-              icon={ShieldCheck} 
-              title="Secure & Private" 
-              description="Enterprise-grade security for your data and your customers' privacy." 
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing Section */}
-      <section id="pricing">
-        <PricingPage setView={setView} onSelect={onSelect} />
-      </section>
-
-      {/* Testimonials Section */}
-      <section id="testimonials" className="py-32 px-10 relative overflow-hidden">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-20">
-            <h2 className="text-5xl font-black text-white mb-6 tracking-tight">Loved by Marketers</h2>
-            <p className="text-soft-lavender/60">Join thousands of businesses scaling their growth with Techtaire.</p>
-          </div>
-
-          <div className="flex flex-wrap justify-center gap-8">
-            {[
-              { name: "Alex Rivera", role: "Growth Lead @ TechFlow", text: "The smoothest messaging platform I've ever used. The automation is pure magic.", avatar: "AR" },
-              { name: "Sarah Chen", role: "Founder @ Bloom", text: "Our conversion rates doubled in the first month. The analytics are incredibly deep.", avatar: "SC" },
-              { name: "Marcus Thorne", role: "Marketing Director", text: "Enterprise-grade power with a consumer-grade experience. Simply brilliant.", avatar: "MT" }
-            ].map((t, i) => (
-              <motion.div 
+            {features.map((f, i) => (
+              <motion.div
                 key={i}
-                initial={{ opacity: 0, scale: 0.9 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                className="glass-panel p-8 max-w-sm flex flex-col gap-6"
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
+                className="glass-panel p-8 group hover:border-royal-purple/30 transition-all"
               >
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-amethyst/20 rounded-full flex items-center justify-center text-amethyst font-black">{t.avatar}</div>
-                  <div>
-                    <h4 className="text-white font-bold">{t.name}</h4>
-                    <p className="text-xs text-soft-lavender/40">{t.role}</p>
-                  </div>
+                <div className="w-16 h-16 bg-royal-purple/10 rounded-2xl flex items-center justify-center text-royal-purple mb-6 group-hover:scale-110 transition-transform">
+                  <f.icon size={32} />
                 </div>
-                <p className="text-soft-lavender/80 italic leading-relaxed">"{t.text}"</p>
-                <div className="flex gap-1">
-                  {[1, 2, 3, 4, 5].map(s => <Star key={s} size={14} className="text-amethyst fill-amethyst" />)}
-                </div>
+                <h3 className="text-2xl font-bold mb-4">{f.title}</h3>
+                <p className="text-soft-lavender/60 leading-relaxed">{f.desc}</p>
               </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Contact Section */}
-      <section id="contact">
-        <ContactPage />
+      {/* How It Works Section */}
+      <section className="py-32 px-6">
+        <div className="max-w-7xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-20"
+          >
+            <h2 className="text-4xl md:text-6xl font-black mb-6 tracking-tight">How It Works</h2>
+            <div className="w-24 h-1.5 bg-royal-purple mx-auto rounded-full" />
+          </motion.div>
+
+          <div className="flex flex-col lg:flex-row items-center justify-between gap-12 relative">
+            {steps.map((s, i) => (
+              <React.Fragment key={i}>
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.2 }}
+                  className="flex-1 flex flex-col items-center text-center max-w-sm"
+                >
+                  <div className="w-24 h-24 bg-gradient-to-br from-royal-purple to-amethyst rounded-3xl flex items-center justify-center text-white mb-8 shadow-xl shadow-royal-purple/20">
+                    <s.icon size={40} />
+                  </div>
+                  <h3 className="text-3xl font-bold mb-4">{s.title}</h3>
+                  <p className="text-soft-lavender/60 text-lg">{s.desc}</p>
+                </motion.div>
+                {i < steps.length - 1 && (
+                  <div className="hidden lg:block text-royal-purple/20">
+                    <ArrowRight size={48} />
+                  </div>
+                )}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
       </section>
 
-      {/* Demo Modal */}
-      <AnimatePresence>
-        {showDemo && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/90 backdrop-blur-xl" 
-              onClick={() => setShowDemo(false)} 
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-5xl aspect-video glass-panel overflow-hidden shadow-[0_0_100px_rgba(93,63,211,0.3)]"
-            >
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-royal-purple via-amethyst to-royal-purple" />
-              <div className="absolute top-6 right-6 z-10">
-                <button 
-                  onClick={() => setShowDemo(false)}
-                  className="w-10 h-10 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-royal-purple transition-all"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              
-              <div className="w-full h-full bg-black flex items-center justify-center relative group">
-                <div className="absolute inset-0 bg-gradient-to-br from-royal-purple/20 to-transparent pointer-events-none" />
-                
-                <div className="text-center z-10">
-                  <motion.div 
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ delay: 0.2 }}
-                    className="w-24 h-24 bg-royal-purple rounded-full flex items-center justify-center mx-auto mb-8 shadow-[0_0_50px_rgba(93,63,211,0.5)] cursor-pointer hover:scale-110 transition-transform"
-                  >
-                    <Zap size={48} className="text-white fill-white ml-2" />
-                  </motion.div>
-                  <motion.h3 
-                    initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.3 }}
-                    className="text-4xl font-black text-white mb-4 tracking-tight"
-                  >
-                    Experience Techtaire
-                  </motion.h3>
-                  <motion.p 
-                    initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.4 }}
-                    className="text-soft-lavender/60 text-lg max-w-md mx-auto"
-                  >
-                    Watch how we transform your WhatsApp marketing with AI-powered automation.
-                  </motion.p>
-                </div>
+      {/* Pricing Section */}
+      <section id="pricing" className="py-32 px-6 bg-white/[0.02]">
+        <div className="max-w-7xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-20"
+          >
+            <h2 className="text-4xl md:text-6xl font-black mb-6 tracking-tight">Simple Pricing</h2>
+            <div className="w-24 h-1.5 bg-royal-purple mx-auto rounded-full" />
+          </motion.div>
 
-                {/* Video UI Overlays */}
-                <div className="absolute top-8 left-8 flex items-center gap-3">
-                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
-                  <span className="text-xs font-black text-white uppercase tracking-widest">Live Demo</span>
-                </div>
-                
-                <div className="absolute bottom-0 left-0 w-full p-10 bg-gradient-to-t from-black to-transparent">
-                  <div className="flex flex-col gap-6">
-                    <div className="flex items-center justify-between text-[10px] font-black text-soft-lavender/40 uppercase tracking-widest">
-                      <span>Automating Campaign...</span>
-                      <span>72% Complete</span>
-                    </div>
-                    <div className="flex items-center gap-6">
-                      <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
-                        <motion.div 
-                          className="h-full bg-gradient-to-r from-royal-purple to-amethyst"
-                          animate={{ width: ['0%', '72%', '100%'] }}
-                          transition={{ duration: 15, repeat: Infinity, ease: 'linear' }}
-                        />
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="flex -space-x-2">
-                          {[1, 2, 3].map(i => (
-                            <div key={i} className="w-6 h-6 rounded-full border-2 border-black bg-white/10" />
-                          ))}
-                        </div>
-                        <span className="text-xs font-mono text-soft-lavender/40">1.2k Watching</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {plans.map((plan, i) => (
+              <PricingCard 
+                key={i}
+                plan={plan}
+                isPremium={plan.name === 'Enterprise'}
+                buttonText="Get Started"
+                onSelect={handleGetStarted}
+              />
+            ))}
           </div>
-        )}
-      </AnimatePresence>
+        </div>
+      </section>
+
+      {/* Feedback Section */}
+      <section className="py-32 px-6 border-t border-white/5">
+        <div className="max-w-4xl mx-auto text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+          >
+            <h2 className="text-4xl md:text-5xl font-black mb-6 tracking-tight">We'd Love to Hear From You! 💬</h2>
+            <p className="text-xl text-soft-lavender/60 mb-12">Share your suggestions, issues, or comments with us</p>
+            <button 
+              onClick={() => setShowFeedback(true)}
+              className="px-10 py-4 bg-white/5 border border-white/10 rounded-2xl font-bold hover:bg-white/10 transition-all"
+            >
+              Send Feedback
+            </button>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Floating Feedback Button */}
+      <motion.button 
+        onClick={() => setShowFeedback(true)}
+        initial={{ scale: 0, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
+        className="fixed bottom-10 right-10 z-[100] w-16 h-16 bg-royal-purple text-white rounded-full flex items-center justify-center shadow-2xl shadow-royal-purple/40 group overflow-hidden"
+      >
+        <motion.div
+          animate={{ 
+            y: [0, -8, 0],
+          }}
+          transition={{ 
+            duration: 2, 
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
+        >
+          <MessageCircle size={28} />
+        </motion.div>
+        
+        {/* Tooltip */}
+        <div className="absolute right-full mr-4 px-4 py-2 bg-white text-black text-xs font-bold rounded-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-xl">
+          Send us your feedback!
+        </div>
+      </motion.button>
 
       {/* Footer */}
-      <footer className="py-20 px-10 border-t border-white/5 bg-black/50 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
-          <div className="space-y-6">
+      <footer className="py-20 px-6 border-t border-white/5 bg-black">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-10">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-royal-purple rounded-xl flex items-center justify-center">
-                <Send size={20} className="text-white" />
-              </div>
-              <span className="text-2xl font-black text-white tracking-tighter">Techtaire</span>
+              <TechtaireLogo className="w-10 h-10" />
+              <span className="text-xl font-black tracking-tighter">TechTaire</span>
             </div>
-            <p className="text-soft-lavender/40 text-sm leading-relaxed">
-              The world's most magical WhatsApp bulk messaging platform.
+            
+            <p className="text-soft-lavender/40 text-center md:text-left">
+              © 2026 TechTaire Message – Trio Developers. All Rights Reserved.
             </p>
+
+            <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-soft-lavender/60">
+              <button onClick={() => setLegalModal('privacy')} className="hover:text-royal-purple transition-colors">Privacy Policy</button>
+              <button onClick={() => setLegalModal('terms')} className="hover:text-royal-purple transition-colors">Terms & Conditions</button>
+              <button onClick={() => setLegalModal('copyright')} className="hover:text-royal-purple transition-colors">Copyright Notice</button>
+            </div>
           </div>
-          <div>
-            <h4 className="text-white font-bold mb-6">Product</h4>
-            <ul className="space-y-4 text-soft-lavender/40 text-sm">
-              <li className="hover:text-amethyst cursor-pointer transition-colors">Features</li>
-              <li className="hover:text-amethyst cursor-pointer transition-colors">Pricing</li>
-              <li className="hover:text-amethyst cursor-pointer transition-colors">API</li>
-              <li className="hover:text-amethyst cursor-pointer transition-colors">Security</li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="text-white font-bold mb-6">Company</h4>
-            <ul className="space-y-4 text-soft-lavender/40 text-sm">
-              <li className="hover:text-amethyst cursor-pointer transition-colors">About</li>
-              <li className="hover:text-amethyst cursor-pointer transition-colors">Blog</li>
-              <li className="hover:text-amethyst cursor-pointer transition-colors">Careers</li>
-              <li className="hover:text-amethyst cursor-pointer transition-colors">Contact</li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="text-white font-bold mb-6">Legal</h4>
-            <ul className="space-y-4 text-soft-lavender/40 text-sm">
-              <li className="hover:text-amethyst cursor-pointer transition-colors">Privacy</li>
-              <li className="hover:text-amethyst cursor-pointer transition-colors">Terms</li>
-              <li className="hover:text-amethyst cursor-pointer transition-colors">Cookie Policy</li>
-            </ul>
-          </div>
-        </div>
-        <div className="max-w-7xl mx-auto mt-20 pt-10 border-t border-white/5 text-center text-soft-lavender/20 text-xs">
-          © 2026 Techtaire. All rights reserved. Made with 💜 for marketers.
         </div>
       </footer>
+
+      <AnimatePresence>
+        {showFeedback && (
+          <FeedbackModal onClose={() => setShowFeedback(false)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
 
 const LoginPage = ({ setView }: { setView: (v: View) => void }) => {
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setView('dashboard');
+      }
+    };
+    checkUser();
+  }, [setView]);
+
   const [isFocused, setIsFocused] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -2879,6 +2985,23 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
   const [isScheduled, setIsScheduled] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showAiChat, setShowAiChat] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedTemplate, setGeneratedTemplate] = useState('');
+
+  const handleAiGenerate = async () => {
+    if (!aiPrompt) return;
+    setIsGenerating(true);
+    try {
+      const response = await axios.post('/api/ai/generate-template', { prompt: aiPrompt });
+      setGeneratedTemplate(response.data.template);
+    } catch (error: any) {
+      showNotify("Failed to generate template: " + (error.response?.data?.error || error.message), "error");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const onEmojiClick = (emojiData: any) => {
     setMessage(prev => prev + emojiData.emoji);
@@ -3361,19 +3484,88 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
       <AnimatePresence>
         {showTemplates && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
-            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowTemplates(false)} />
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => { setShowTemplates(false); setShowAiChat(false); }} />
             <motion.div 
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-2xl glass-panel p-10 max-h-[80vh] overflow-hidden flex flex-col"
+              className="relative w-full max-w-2xl glass-panel p-10 max-h-[85vh] overflow-hidden flex flex-col"
             >
               <div className="flex items-center justify-between mb-8">
-                <h3 className="text-2xl font-black text-white tracking-tight">Message Templates</h3>
-                <button onClick={() => setShowTemplates(false)} className="p-2 hover:bg-white/10 rounded-xl text-soft-lavender/40 hover:text-white transition-all">
+                <div className="flex items-center gap-4">
+                  <h3 className="text-2xl font-black text-white tracking-tight">Message Templates</h3>
+                  <button 
+                    onClick={() => setShowAiChat(!showAiChat)}
+                    className={cn(
+                      "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
+                      showAiChat ? "bg-amethyst text-white shadow-[0_0_20px_rgba(153,102,255,0.4)]" : "bg-white/5 text-soft-lavender hover:bg-white/10"
+                    )}
+                  >
+                    <Sparkles size={14} />
+                    <span>AI Generate Template</span>
+                  </button>
+                </div>
+                <button onClick={() => { setShowTemplates(false); setShowAiChat(false); }} className="p-2 hover:bg-white/10 rounded-xl text-soft-lavender/40 hover:text-white transition-all">
                   <X size={24} />
                 </button>
               </div>
+
+              {showAiChat && (
+                <motion.div 
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  className="mb-8 p-6 bg-royal-purple/5 border border-royal-purple/20 rounded-2xl space-y-4 relative overflow-hidden"
+                >
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-royal-purple/10 blur-3xl rounded-full -mr-16 -mt-16" />
+                  
+                  <div className="relative z-10 space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-amethyst uppercase tracking-widest">AI Template Generator</label>
+                      <div className="flex gap-3">
+                        <input 
+                          type="text"
+                          value={aiPrompt}
+                          onChange={(e) => setAiPrompt(e.target.value)}
+                          placeholder="Describe your template... e.g. Write a festival offer message for my clothing store"
+                          className="flex-1 bg-black/40 border border-white/5 rounded-xl py-3 px-4 text-white outline-none focus:border-amethyst transition-all text-sm"
+                        />
+                        <button 
+                          onClick={handleAiGenerate}
+                          disabled={isGenerating || !aiPrompt}
+                          className="px-6 py-3 bg-royal-purple text-white rounded-xl font-bold text-sm hover:shadow-[0_0_20px_rgba(93,63,211,0.4)] transition-all disabled:opacity-50 flex items-center gap-2"
+                        >
+                          {isGenerating ? <RefreshCw size={16} className="animate-spin" /> : <Zap size={16} />}
+                          Generate
+                        </button>
+                      </div>
+                    </div>
+
+                    {generatedTemplate && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="space-y-3"
+                      >
+                        <div className="p-4 bg-black/60 border border-white/5 rounded-xl text-sm text-soft-lavender leading-relaxed whitespace-pre-wrap">
+                          {generatedTemplate}
+                        </div>
+                        <button 
+                          onClick={() => {
+                            setMessage(generatedTemplate);
+                            setShowTemplates(false);
+                            setShowAiChat(false);
+                            showNotify("AI Template applied!", "success");
+                          }}
+                          className="w-full py-3 bg-white/5 border border-white/10 rounded-xl text-xs font-black text-white uppercase tracking-widest hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+                        >
+                          <Check size={14} className="text-emerald-400" />
+                          Use This Template
+                        </button>
+                      </motion.div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto pr-2 custom-scrollbar">
                 {MESSAGE_TEMPLATES.map(template => (

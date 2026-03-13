@@ -486,6 +486,47 @@ async function startServer() {
     }
   });
 
+  // AI Template Generation
+  app.post("/api/ai/generate-template", async (req, res) => {
+    const { prompt } = req.body;
+    const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+
+    if (!ANTHROPIC_API_KEY) {
+      return res.status(500).json({ error: "Anthropic API key not configured" });
+    }
+
+    try {
+      const response = await axios.post(
+        "https://api.anthropic.com/v1/messages",
+        {
+          model: "claude-3-5-sonnet-20240620", // Using a valid model name as per Anthropic docs
+          max_tokens: 1024,
+          messages: [
+            {
+              role: "user",
+              content: `Generate a WhatsApp message template based on this description: "${prompt}". 
+              The template should be professional, engaging, and suitable for bulk messaging. 
+              Only provide the template text, no other conversation.`
+            }
+          ]
+        },
+        {
+          headers: {
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json"
+          }
+        }
+      );
+
+      const template = response.data.content[0].text;
+      res.json({ template });
+    } catch (error: any) {
+      console.error("AI Generation Error:", error.response?.data || error.message);
+      res.status(500).json({ error: "Failed to generate template" });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
