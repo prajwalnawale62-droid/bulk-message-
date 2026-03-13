@@ -46,8 +46,10 @@ import {
   Sun,
   Paperclip,
   SendHorizontal,
-  Bell
+  Bell,
+  Smile
 } from 'lucide-react';
+import EmojiPicker, { Theme as EmojiTheme } from 'emoji-picker-react';
 import { motion, AnimatePresence, useScroll, useSpring, useTransform } from 'framer-motion';
 import { GoogleGenAI } from "@google/genai";
 import { supabase, isSupabaseConfigured } from './lib/supabase';
@@ -767,7 +769,11 @@ export default function App() {
       return;
     }
     if (plan.amount === 0) {
-      if (confirm("Activate 1-Minute Free Trial?")) {
+      if (profile?.plan === 'free_trial') {
+        showNotify("You are already on the Free Trial plan.", "info");
+        return;
+      }
+      if (confirm("Activate 1-Minute Free Trial? This is a demo plan to explore features.")) {
         activateFreeTrial();
       }
       return;
@@ -894,7 +900,10 @@ export default function App() {
         const { data: { session } } = await supabase.auth.getSession();
         setUser(session?.user ?? null);
         if (session) {
-          setView('dashboard');
+          const savedView = localStorage.getItem('techtaire_active_view');
+          if (!savedView || savedView === 'landing' || savedView === 'login') {
+            setView('dashboard');
+          }
         }
         setLoading(false); // Always set loading to false after session check
       } catch (err) {
@@ -916,13 +925,28 @@ export default function App() {
       } else {
         // If we just signed in or session was found, go to dashboard
         if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
-          setView('dashboard');
+          const savedView = localStorage.getItem('techtaire_active_view');
+          if (!savedView || savedView === 'landing' || savedView === 'login') {
+            setView('dashboard');
+          }
           setLoading(false); // Ensure loading is false when session is found
         }
       }
     });
 
     return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setLegalModal(null);
+        setShowPaymentModal(false);
+        setLogoClicks(0);
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
   }, []);
 
   const fetchProfile = async () => {
@@ -1219,7 +1243,7 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
                   {view === 'messaging' && <MessagingView profile={profile} user={user} showNotify={showNotify} />}
                   {view === 'history' && <HistoryView user={user} showNotify={showNotify} />}
                   {view === 'guide' && <GuideView setView={setView} />}
-                  {view === 'plans' && <PricingPage setView={setView} isDashboard onSelect={handlePayment} />}
+                  {view === 'plans' && <PricingPage setView={setView} isDashboard onSelect={handlePayment} currentPlan={profile?.plan} />}
                   {view === 'settings' && <SettingsView profile={profile} onUpdate={fetchProfile} onOpenModal={(type) => setLegalModal(type)} showNotify={showNotify} />}
                   {view === 'admin' && <AdminView user={user} />}
                 </motion.div>
@@ -2112,7 +2136,7 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
   );
 };
 
-const PricingPage = ({ setView, isDashboard = false, onSelect }: { setView: (v: View) => void, isDashboard?: boolean, onSelect: (plan: any) => void }) => {
+const PricingPage = ({ setView, isDashboard = false, onSelect, currentPlan }: { setView: (v: View) => void, isDashboard?: boolean, onSelect: (plan: any) => void, currentPlan?: string }) => {
   const plans = [
     { 
       name: 'Demo Plan', 
@@ -2138,6 +2162,12 @@ const PricingPage = ({ setView, isDashboard = false, onSelect }: { setView: (v: 
       description: 'Scale without limits with enterprise-grade power.'
     }
   ];
+
+  const isCurrent = (plan: any) => {
+    if (plan.amount === 0 && currentPlan === 'free_trial') return true;
+    if (currentPlan === plan.name.toLowerCase().replace(' ', '_')) return true;
+    return false;
+  };
 
   return (
     <section className={cn("py-32 px-10 relative", isDashboard ? "py-0 px-0" : "")}>
@@ -2191,12 +2221,14 @@ const PricingPage = ({ setView, isDashboard = false, onSelect }: { setView: (v: 
 
               <button 
                 onClick={() => onSelect(plan)}
+                disabled={isCurrent(plan)}
                 className={cn(
                   "w-full py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all duration-300",
+                  isCurrent(plan) ? "bg-emerald-500/20 text-emerald-400 cursor-default" :
                   plan.isPopular ? "bg-amethyst text-white shadow-lg shadow-amethyst/20 hover:bg-amethyst/80" : "bg-white/5 text-white hover:bg-white/10"
                 )}
               >
-                {plan.amount === 0 ? 'Start Free' : 'Get Started'}
+                {isCurrent(plan) ? 'Current Plan' : plan.amount === 0 ? 'Start Free' : 'Get Started'}
               </button>
             </motion.div>
           ))}
@@ -2313,6 +2345,14 @@ function ContactsView({ user, showNotify }: { user: any, showNotify: (m: string,
   const [isBatch, setIsBatch] = useState(false);
   const [editingContact, setEditingContact] = useState<any>(null);
   const [newContact, setNewContact] = useState({ name: '', whatsapp_number: '', batch: '', course: '', tags: '' });
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowAddModal(false);
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, []);
 
   useEffect(() => {
     if (user) fetchContacts();
@@ -2832,13 +2872,31 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
   const [sending, setSending] = useState(false);
   const [attachment, setAttachment] = useState<File | null>(null);
   const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
-  const [batches, setBatches] = useState<string[]>([]);
   const [selectedBatch, setSelectedBatch] = useState('all');
   const [contactCount, setContactCount] = useState(0);
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
   const [isScheduled, setIsScheduled] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+
+  const onEmojiClick = (emojiData: any) => {
+    setMessage(prev => prev + emojiData.emoji);
+    setShowEmojiPicker(false);
+  };
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowTemplates(false);
+        setShowEmojiPicker(false);
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, []);
+
+  const [batches, setBatches] = useState<string[]>([]);
 
   const isExpired = profile?.plan === 'free_trial' && profile?.trial_expiry && new Date(profile.trial_expiry) < new Date();
   
@@ -3223,16 +3281,38 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
           )}
 
           <div className="flex justify-between items-center">
-            <div className="flex gap-4">
-              <label className={cn(
-                "p-3 bg-white/5 rounded-xl text-soft-lavender/40 hover:text-white transition-colors cursor-pointer",
-                isExpired && "opacity-50 cursor-not-allowed"
-              )}>
-                <Paperclip size={20} />
-                <input type="file" className="hidden" onChange={handleFileChange} accept="image/*,video/*" disabled={isExpired} />
-              </label>
-              <button disabled={isExpired} className="p-3 bg-white/5 rounded-xl text-soft-lavender/40 hover:text-white transition-colors disabled:opacity-50"><Smartphone size={20} /></button>
-            </div>
+              <div className="flex gap-4">
+                <div className="relative">
+                  <button 
+                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    disabled={isExpired}
+                    className="p-3 bg-white/5 rounded-xl text-soft-lavender/40 hover:text-white transition-colors disabled:opacity-50"
+                  >
+                    <Smile size={20} />
+                  </button>
+                  {showEmojiPicker && (
+                    <div className="absolute bottom-full left-0 mb-4 z-50">
+                      <div className="fixed inset-0" onClick={() => setShowEmojiPicker(false)} />
+                      <div className="relative">
+                        <EmojiPicker 
+                          onEmojiClick={onEmojiClick} 
+                          theme={EmojiTheme.DARK}
+                          width={300}
+                          height={400}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <label className={cn(
+                  "p-3 bg-white/5 rounded-xl text-soft-lavender/40 hover:text-white transition-colors cursor-pointer",
+                  isExpired && "opacity-50 cursor-not-allowed"
+                )}>
+                  <Paperclip size={20} />
+                  <input type="file" className="hidden" onChange={handleFileChange} accept="image/*,video/*" disabled={isExpired} />
+                </label>
+                <button disabled={isExpired} className="p-3 bg-white/5 rounded-xl text-soft-lavender/40 hover:text-white transition-colors disabled:opacity-50"><Smartphone size={20} /></button>
+              </div>
             <button 
               onClick={handleSend}
               disabled={sending || (!message && !attachment) || isExpired}
@@ -3439,9 +3519,13 @@ function HistoryView({ user, showNotify }: { user: any, showNotify: (m: string, 
 }
 
 function SettingsView({ profile, onUpdate, onOpenModal, showNotify }: { profile: any, onUpdate: () => void, onOpenModal: (type: any) => void, showNotify: (m: string, t?: 'success' | 'error' | 'info' | 'warning') => void }) {
-  const [whatsappConfig, setWhatsappConfig] = useState({
-    api_key: profile?.whatsapp_api_key || '',
-    phone_number_id: profile?.whatsapp_phone_number_id || ''
+  const [whatsappConfig, setWhatsappConfig] = useState(() => {
+    const saved = localStorage.getItem('techtaire_whatsapp_config');
+    const parsed = saved ? JSON.parse(saved) : null;
+    return {
+      api_key: profile?.whatsapp_api_key || parsed?.api_key || '',
+      phone_number_id: profile?.whatsapp_phone_number_id || parsed?.phone_number_id || ''
+    };
   });
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);

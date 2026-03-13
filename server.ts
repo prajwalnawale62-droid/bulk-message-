@@ -448,16 +448,35 @@ async function startServer() {
       console.log(`Sending WhatsApp message to ${to} using Phone Number ID ${PHONE_NUMBER_ID}`);
       console.log(`Payload:`, JSON.stringify(data, null, 2));
       
-      const response = await axios.post(
-        `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
-        data,
-        {
+      let response;
+      const urlV17 = `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`;
+      const urlV16 = `https://graph.facebook.com/v16.0/${PHONE_NUMBER_ID}/messages`;
+
+      try {
+        console.log(`Full URL (v17.0): ${urlV17}`);
+        response = await axios.post(urlV17, data, {
           headers: {
             Authorization: `Bearer ${WHATSAPP_TOKEN}`,
             "Content-Type": "application/json",
           },
+        });
+      } catch (v17Error: any) {
+        console.error(`v17.0 failed with status ${v17Error.response?.status}. Error: ${v17Error.response?.data?.error?.message || v17Error.message}`);
+        
+        if (v17Error.response?.status === 404 || v17Error.response?.status === 400) {
+          console.log(`Attempting fallback to v16.0...`);
+          console.log(`Full URL (v16.0): ${urlV16}`);
+          response = await axios.post(urlV16, data, {
+            headers: {
+              Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+              "Content-Type": "application/json",
+            },
+          });
+        } else {
+          throw v17Error;
         }
-      );
+      }
+
       console.log(`WhatsApp message sent successfully to ${to}`);
       res.json(response.data);
     } catch (error: any) {
