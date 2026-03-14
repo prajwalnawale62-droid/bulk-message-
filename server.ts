@@ -499,14 +499,12 @@ async function startServer() {
       const response = await axios.post(
         "https://api.anthropic.com/v1/messages",
         {
-          model: "claude-3-5-sonnet-20240620", // Using a valid model name as per Anthropic docs
-          max_tokens: 1024,
+          model: "claude-haiku-4-5-20251001", // Using the model requested by the user
+          max_tokens: 1000,
           messages: [
             {
               role: "user",
-              content: `Generate a WhatsApp message template based on this description: "${prompt}". 
-              The template should be professional, engaging, and suitable for bulk messaging. 
-              Only provide the template text, no other conversation.`
+              content: "You are a WhatsApp message template generator. Generate a professional WhatsApp message template based on this description: " + prompt + ". Return only the message text, nothing else. Keep it under 300 characters."
             }
           ]
         },
@@ -523,7 +521,7 @@ async function startServer() {
       res.json({ template });
     } catch (error: any) {
       console.error("AI Generation Error:", error.response?.data || error.message);
-      res.status(500).json({ error: "Failed to generate template" });
+      res.status(500).json({ error: "Failed to generate. Please try again." });
     }
   });
 

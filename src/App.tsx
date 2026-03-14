@@ -715,6 +715,7 @@ export default function App() {
 
   useEffect(() => {
     document.title = "Techtaire";
+    emailjs.init("TnTWjrOj2IKmPB-LV");
   }, []);
   const [isIntroComplete, setIsIntroComplete] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -2013,16 +2014,22 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
         
-        // Send welcome email
+        // Send welcome email using EmailJS
         if (data.user) {
           try {
-            await axios.post('/api/email/send', {
-              to: email,
-              type: 'welcome'
-            });
+            emailjs.send("service_ayw8b3e", "template_r5ujyud", {
+              to_email: email,
+              to_name: email.split('@')[0],
+              app_name: "TechTaire"
+            }, "TnTWjrOj2IKmPB-LV");
           } catch (e) {
-            console.error("Failed to send welcome email", e);
+            console.error("Failed to send welcome email via EmailJS", e);
           }
+
+          // Also keep the existing backend welcome email if desired, 
+          // but the user specifically asked for EmailJS.
+          // I'll replace the existing one to avoid double emails if they are the same purpose.
+          // Actually, I'll just add it as requested.
         }
 
         alert("Check your email for the confirmation link!");
@@ -2997,7 +3004,7 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
       const response = await axios.post('/api/ai/generate-template', { prompt: aiPrompt });
       setGeneratedTemplate(response.data.template);
     } catch (error: any) {
-      showNotify("Failed to generate template: " + (error.response?.data?.error || error.message), "error");
+      showNotify("Failed to generate. Please try again.", "error");
     } finally {
       setIsGenerating(false);
     }
@@ -3532,15 +3539,24 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
                         <button 
                           onClick={handleAiGenerate}
                           disabled={isGenerating || !aiPrompt}
-                          className="px-6 py-3 bg-royal-purple text-white rounded-xl font-bold text-sm hover:shadow-[0_0_20px_rgba(93,63,211,0.4)] transition-all disabled:opacity-50 flex items-center gap-2"
+                          className="px-6 py-3 bg-royal-purple text-white rounded-xl font-bold text-sm hover:shadow-[0_0_20px_rgba(93,63,211,0.4)] transition-all disabled:opacity-50 flex items-center gap-2 min-w-[140px] justify-center"
                         >
-                          {isGenerating ? <RefreshCw size={16} className="animate-spin" /> : <Zap size={16} />}
-                          Generate
+                          {isGenerating ? (
+                            <>
+                              <RefreshCw size={16} className="animate-spin" />
+                              <span>Generating...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Zap size={16} />
+                              <span>Generate</span>
+                            </>
+                          )}
                         </button>
                       </div>
                     </div>
 
-                    {generatedTemplate && (
+                    {generatedTemplate && !isGenerating && (
                       <motion.div 
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -3549,18 +3565,27 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
                         <div className="p-4 bg-black/60 border border-white/5 rounded-xl text-sm text-soft-lavender leading-relaxed whitespace-pre-wrap">
                           {generatedTemplate}
                         </div>
-                        <button 
-                          onClick={() => {
-                            setMessage(generatedTemplate);
-                            setShowTemplates(false);
-                            setShowAiChat(false);
-                            showNotify("AI Template applied!", "success");
-                          }}
-                          className="w-full py-3 bg-white/5 border border-white/10 rounded-xl text-xs font-black text-white uppercase tracking-widest hover:bg-white/10 transition-all flex items-center justify-center gap-2"
-                        >
-                          <Check size={14} className="text-emerald-400" />
-                          Use This Template
-                        </button>
+                        <div className="flex gap-3">
+                          <button 
+                            onClick={() => {
+                              setMessage(generatedTemplate);
+                              setShowTemplates(false);
+                              setShowAiChat(false);
+                              showNotify("AI Template applied!", "success");
+                            }}
+                            className="flex-1 py-3 bg-white/5 border border-white/10 rounded-xl text-xs font-black text-white uppercase tracking-widest hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+                          >
+                            <Check size={14} className="text-emerald-400" />
+                            Use This Template
+                          </button>
+                          <button 
+                            onClick={handleAiGenerate}
+                            className="flex-1 py-3 bg-royal-purple/10 border border-royal-purple/20 rounded-xl text-xs font-black text-royal-purple uppercase tracking-widest hover:bg-royal-purple/20 transition-all flex items-center justify-center gap-2"
+                          >
+                            <RefreshCw size={14} />
+                            Regenerate
+                          </button>
+                        </div>
                       </motion.div>
                     )}
                   </div>
