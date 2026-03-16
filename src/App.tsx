@@ -2996,6 +2996,7 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
   const [aiPrompt, setAiPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedTemplate, setGeneratedTemplate] = useState('');
+  const [sendingProgress, setSendingProgress] = useState('');
 
   const handleAiGenerate = async () => {
     if (!aiPrompt) return;
@@ -3103,17 +3104,17 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
     if (!message && !attachment) return;
     if (!user) return;
     
-    console.log("WhatsApp API Config:", {
-      apiKey: profile.whatsapp_api_key ? "Configured (Hidden)" : "Missing",
-      phoneNumberId: profile.whatsapp_phone_number_id || "Missing"
-    });
+    const ultramsgSaved = localStorage.getItem('techtaire_ultramsg_config');
+    const ultramsg = ultramsgSaved ? JSON.parse(ultramsgSaved) : null;
+    const hasUltra = ultramsg && ultramsg.url && ultramsg.token;
 
-    if (!profile.whatsapp_api_key || !profile.whatsapp_phone_number_id) {
-      alert("Please configure your WhatsApp API settings first.");
+    if (!hasUltra && (!profile.whatsapp_api_key || !profile.whatsapp_phone_number_id)) {
+      alert("Please configure UltraMsg settings first");
       return;
     }
 
     setSending(true);
+    setSendingProgress('');
     try {
       if (isScheduled) {
         if (!scheduleDate || !scheduleTime) {
@@ -3192,10 +3193,13 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
 
       // 2. Send messages
       let successCount = 0;
+      let failCount = 0;
       let errorMessages: string[] = [];
 
       for (let i = 0; i < contactsToSend.length; i++) {
-        if (successCount >= maxMessages) break;
+        if (successCount + failCount >= maxMessages) break;
+        
+        setSendingProgress(`Sending ${i + 1}/${contactsToSend.length}...`);
         
         const contact = contactsToSend[i];
         const cleanNumber = cleanPhoneNumber(contact.whatsapp_number);
@@ -3207,41 +3211,35 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
         }
 
         try {
-          await axios.post('/api/whatsapp/send', {
-            to: cleanNumber,
-            message,
-            apiKey: profile.whatsapp_api_key,
-            phoneNumberId: profile.whatsapp_phone_number_id,
-            attachmentUrl: attachmentPreview
-          });
+          if (hasUltra) {
+            const params = new URLSearchParams();
+            params.append('token', ultramsg.token);
+            params.append('to', cleanNumber);
+            params.append('body', message);
+            
+            await axios.post(`${ultramsg.url}messages/chat`, params, {
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+            });
+          } else {
+            await axios.post('/api/whatsapp/send', {
+              to: cleanNumber,
+              message,
+              apiKey: profile.whatsapp_api_key,
+              phoneNumberId: profile.whatsapp_phone_number_id,
+              attachmentUrl: attachmentPreview
+            });
+          }
           successCount++;
         } catch (e: any) {
+          failCount++;
           const status = e.response?.status;
           const errorData = e.response?.data;
           let msg = errorData?.error?.message || errorData?.message || e.message;
           
-          // Add full error details for debugging
-          const fullError = JSON.stringify(errorData || e.message, null, 2);
-          console.error(`WhatsApp API Error for ${cleanNumber}:`, fullError);
+          console.error(`Messaging Error for ${cleanNumber}:`, errorData || e.message);
           
-          if (status === 401) {
-            const subcode = errorData?.error?.error_subcode;
-            if (subcode === 463) {
-              msg = "Your WhatsApp Access Token has EXPIRED. Meta's temporary tokens only last 24 hours. Please generate a new one in the Meta Developer Portal and update it in Settings.";
-            } else {
-              msg = "401 Unauthorized: Your WhatsApp Access Token is invalid or expired. Please update it in Settings.";
-            }
-          } else if (status === 400) {
-            const errorMsg = errorData?.error?.message || "";
-            if (errorMsg.includes("not in the allowed list")) {
-              msg = `400 Bad Request: Recipient ${cleanNumber} is not in your Meta App's "Test Numbers" list. In Development mode, you can only send to verified test numbers.`;
-            } else {
-              msg = `400 Bad Request: ${msg}`;
-            }
-          }
-
           if (!errorMessages.includes(msg)) {
-            errorMessages.push(`${msg}\nFull API Response: ${fullError}`);
+            errorMessages.push(msg);
           }
         }
       }
@@ -3251,27 +3249,28 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
         user_id: user.id,
         name: `Campaign ${new Date().toLocaleString()}`,
         message,
-        status: 'completed',
+        status: failCount === 0 ? 'completed' : 'partially_completed',
         total_messages: contactsToSend.length,
         sent_messages: successCount
       }]);
 
-      if (successCount === 0 && contactsToSend.length > 0) {
-        showNotify("❌ Failed to send campaign. Please check your API settings.", "error");
-        alert(`Campaign failed! Sent to 0/${contactsToSend.length} contacts.\n\nErrors encountered:\n${errorMessages.join('\n')}\n\nTroubleshooting tips:\n1. Ensure your WhatsApp API Key and Phone Number ID are correct in Settings.\n2. Ensure contact numbers include the country code (e.g., 91 for India) without the '+' sign.\n3. If your Meta app is in Development mode, you MUST add the recipient's number to the "Test Numbers" list in your Meta Dashboard.\n4. Check your Meta App's "API Setup" page to see if your token has expired.`);
-      } else if (successCount < contactsToSend.length) {
-        showNotify(`Campaign partially completed! Sent to ${successCount}/${contactsToSend.length} contacts.`, "warning");
-        alert(`Campaign partially completed! Sent to ${successCount}/${contactsToSend.length} contacts.\n\nSome messages failed. Errors encountered:\n${errorMessages.join('\n')}`);
-      } else {
+      if (successCount > 0) {
         showNotify(`✅ Campaign sent successfully to ${successCount} contacts!`, "success");
       }
+      
+      if (failCount > 0) {
+        showNotify(`❌ Failed to send to ${failCount} contacts`, "error");
+      }
+
       setMessage('');
       setAttachment(null);
       setAttachmentPreview(null);
+      setSendingProgress('');
     } catch (error: any) {
       alert("Failed to start campaign: " + error.message);
     } finally {
       setSending(false);
+      setSendingProgress('');
     }
   };
 
@@ -3449,7 +3448,7 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
               className="btn-premium flex items-center gap-3 px-10 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {sending ? <RefreshCw className="animate-spin" size={20} /> : <SendHorizontal size={20} />}
-              <span>{sending ? "Sending..." : "Send Campaign"}</span>
+              <span>{sending ? (sendingProgress || "Sending...") : "Send Campaign"}</span>
             </button>
           </div>
           
@@ -3744,9 +3743,49 @@ function SettingsView({ profile, onUpdate, onOpenModal, showNotify }: { profile:
       phone_number_id: profile?.whatsapp_phone_number_id || parsed?.phone_number_id || ''
     };
   });
+  const [ultramsgConfig, setUltramsgConfig] = useState(() => {
+    const saved = localStorage.getItem('techtaire_ultramsg_config');
+    return saved ? JSON.parse(saved) : { url: '', token: '' };
+  });
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
+  const [testingUltra, setTestingUltra] = useState(false);
+  const [ultraTestResult, setUltraTestResult] = useState<any>(null);
+
+  const handleTestUltraMsg = async () => {
+    if (!ultramsgConfig.url || !ultramsgConfig.token) {
+      showNotify("Please enter both UltraMsg API URL and Token first.", "warning");
+      return;
+    }
+
+    setTestingUltra(true);
+    setUltraTestResult(null);
+    try {
+      // UltraMsg test connection usually involves checking instance status
+      const response = await axios.get(`${ultramsgConfig.url}instance/status?token=${ultramsgConfig.token}`);
+      
+      setUltraTestResult({
+        success: true,
+        data: response.data
+      });
+      showNotify("✅ UltraMsg Connection Test Successful!", "success");
+    } catch (e: any) {
+      setUltraTestResult({
+        success: false,
+        error: e.response?.data || e.message,
+        status: e.response?.status
+      });
+      showNotify("❌ UltraMsg Connection Test Failed.", "error");
+    } finally {
+      setTestingUltra(false);
+    }
+  };
+
+  const handleSaveUltra = () => {
+    localStorage.setItem('techtaire_ultramsg_config', JSON.stringify(ultramsgConfig));
+    showNotify("✅ UltraMsg settings saved successfully!", "success");
+  };
 
   const handleTestConnection = async () => {
     if (!whatsappConfig.api_key || !whatsappConfig.phone_number_id) {
@@ -3877,6 +3916,71 @@ function SettingsView({ profile, onUpdate, onOpenModal, showNotify }: { profile:
                 <pre className="text-[10px] font-mono text-soft-lavender/80">
                   {JSON.stringify(testResult.success ? testResult.data : testResult.error, null, 2)}
                 </pre>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="glass-panel p-10 space-y-8">
+        <h3 className="text-xl font-black text-white tracking-tight">UltraMsg Configuration</h3>
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">UltraMsg API URL</label>
+            <input 
+              type="text" 
+              value={ultramsgConfig.url}
+              onChange={(e) => setUltramsgConfig({ ...ultramsgConfig, url: e.target.value })}
+              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:border-amethyst transition-all"
+              placeholder="https://api.ultramsg.com/instanceXXXXX/"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">UltraMsg Token</label>
+            <input 
+              type="password" 
+              value={ultramsgConfig.token}
+              onChange={(e) => setUltramsgConfig({ ...ultramsgConfig, token: e.target.value })}
+              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:border-amethyst transition-all"
+              placeholder="Enter your UltraMsg token"
+            />
+          </div>
+          <div className="flex gap-4">
+            <button 
+              onClick={handleSaveUltra}
+              className="btn-premium flex-1"
+            >
+              Save Configuration
+            </button>
+            <button 
+              onClick={handleTestUltraMsg}
+              disabled={testingUltra}
+              className="px-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-bold hover:bg-white/10 transition-all disabled:opacity-50"
+            >
+              {testingUltra ? "Testing..." : "Test Connection"}
+            </button>
+          </div>
+
+          {ultraTestResult && (
+            <div className={cn(
+              "p-6 rounded-2xl border animate-in fade-in slide-in-from-top-4 duration-300",
+              ultraTestResult.success ? "bg-emerald-500/10 border-emerald-500/20" : "bg-red-500/10 border-red-500/20"
+            )}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className={cn(
+                  "w-8 h-8 rounded-full flex items-center justify-center",
+                  ultraTestResult.success ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
+                )}>
+                  {ultraTestResult.success ? <Check size={16} /> : <AlertCircle size={16} />}
+                </div>
+                <div>
+                  <h4 className="font-bold text-white">
+                    {ultraTestResult.success ? "UltraMsg Connected" : `UltraMsg Connection Failed`}
+                  </h4>
+                  <p className="text-xs text-soft-lavender/60">
+                    {ultraTestResult.success ? "Your UltraMsg API is correctly configured." : "There was an error connecting to UltraMsg."}
+                  </p>
+                </div>
               </div>
             </div>
           )}
