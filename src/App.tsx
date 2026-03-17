@@ -4065,7 +4065,7 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
                 connectionStatus === 'connected' ? "bg-emerald-500" : connectionStatus === 'waiting' ? "bg-amber-500" : "bg-red-500"
               )} />
               <span className="text-sm font-bold text-white uppercase tracking-widest">
-                {connectionStatus === 'connected' ? "Connected" : connectionStatus === 'waiting' ? "Waiting for Scan" : "Disconnected"}
+                {connectionStatus === 'connected' ? "WhatsApp Connected" : connectionStatus === 'waiting' ? "Waiting for Scan" : "Disconnected"}
               </span>
             </div>
             <button 
@@ -4073,14 +4073,14 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
               disabled={polling || connectionStatus === 'connected'}
               className="px-6 py-2 bg-royal-purple text-white rounded-xl text-xs font-bold hover:bg-amethyst transition-all disabled:opacity-50"
             >
-              {polling ? "Polling..." : connectionStatus === 'connected' ? "Connected" : "Connect WhatsApp"}
+              {polling ? "Polling..." : connectionStatus === 'connected' ? "WhatsApp Connected" : "Connect WhatsApp"}
             </button>
           </div>
 
           {(qrLoading || (polling && !qrCode && !qrHtml)) && (
             <div className="flex flex-col items-center gap-4 p-10 bg-white/5 rounded-3xl border border-white/10">
               <RefreshCw className="animate-spin text-amethyst" size={40} />
-              <p className="text-sm font-black text-white uppercase tracking-widest">Generating QR Code...</p>
+              <p className="text-sm font-black text-white uppercase tracking-widest">Generating QR Code</p>
             </div>
           )}
 
@@ -4113,7 +4113,7 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
                 <Check size={20} />
               </div>
               <div>
-                <p className="text-white font-bold">✅ WhatsApp Connected!</p>
+                <p className="text-white font-bold">✅ WhatsApp Connected</p>
                 <p className="text-xs text-soft-lavender/60">Your server is ready to send messages.</p>
               </div>
             </div>
@@ -4482,9 +4482,9 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
                     isConnecting ? "bg-blue-500 animate-pulse" : "bg-red-500"
                   )} />
                   <span className="text-[10px] font-black uppercase tracking-widest text-soft-lavender/40">
-                    {whatsappStatus === 'connected' ? "Connected" : 
+                    {whatsappStatus === 'connected' ? "WhatsApp Connected" : 
                      whatsappStatus === 'waiting' ? "Waiting for Scan" : 
-                     isConnecting ? "Initializing..." : "Disconnected"}
+                     isConnecting ? "Generating QR Code" : "Disconnected"}
                   </span>
                 </div>
               </div>
@@ -4503,12 +4503,12 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
             ) : whatsappStatus === 'connected' ? (
               <div className="flex items-center gap-3 text-emerald-400 font-bold bg-emerald-500/10 px-6 py-3 rounded-2xl border border-emerald-500/20">
                 <Check size={20} />
-                <span>Connected & Ready</span>
+                <span>WhatsApp Connected</span>
               </div>
             ) : (
               <div className="flex items-center gap-3 text-amber-400 font-bold">
                 <RefreshCw size={16} className="animate-spin" />
-                <span>{whatsappStatus === 'waiting' ? "Waiting for Scan..." : "Connecting..."}</span>
+                <span>{whatsappStatus === 'waiting' ? "Waiting for Scan..." : "Generating QR Code"}</span>
               </div>
             )}
           </div>
@@ -4517,7 +4517,7 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
             {qrLoading ? (
               <div className="flex flex-col items-center gap-3">
                 <RefreshCw className="animate-spin text-amethyst" size={32} />
-                <p className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Generating QR...</p>
+                <p className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Generating QR Code</p>
               </div>
             ) : qrHtml ? (
               <div 
@@ -4531,14 +4531,14 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
             ) : isConnecting && !qrHtml && !qrCode ? (
               <div className="flex flex-col items-center gap-3">
                 <RefreshCw className="animate-spin text-amethyst" size={32} />
-                <p className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Waiting for QR...</p>
+                <p className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Generating QR Code</p>
               </div>
             ) : whatsappStatus === 'connected' ? (
               <div className="flex flex-col items-center gap-3 text-center p-6">
                 <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-500">
                   <Check size={40} />
                 </div>
-                <p className="text-xs font-black text-emerald-400 uppercase tracking-widest text-center">WhatsApp Active</p>
+                <p className="text-xs font-black text-emerald-400 uppercase tracking-widest text-center">WhatsApp Connected</p>
               </div>
             ) : (
               <div className="flex flex-col items-center gap-3 text-center p-6">
