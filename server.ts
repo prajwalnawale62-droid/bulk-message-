@@ -112,7 +112,11 @@ async function startServer() {
 
     const transporter = getTransporter();
     if (!transporter) {
-      return res.status(500).json({ error: "Email service is not configured. Please set SMTP_USER and SMTP_PASS in environment variables." });
+      console.warn("Email requested but SMTP is not configured.");
+      return res.status(200).json({ 
+        success: false, 
+        message: "Email service is not configured. Please set SMTP_USER and SMTP_PASS in environment variables." 
+      });
     }
 
     try {
@@ -421,85 +425,49 @@ async function startServer() {
   // WhatsApp Server Proxy
   app.get("/api/whatsapp-server/qr", async (req, res) => {
     const { url, email } = req.query;
-    if (!url) return res.status(400).json({ error: "URL is required" });
+    const targetUrl = `https://techtaire-server-production.up.railway.app/qr?email=${encodeURIComponent(email as string)}`;
     
-    const baseUrl = (url as string).replace(/\/$/, "");
-    const emailStr = email as string;
-    
-    // Try multiple patterns if one fails
-    const tryUrls = [
-      `${baseUrl}/qr/${emailStr}`, // Raw email
-      `${baseUrl}/qr/${encodeURIComponent(emailStr)}`, // Encoded email
-      `${baseUrl}/qr?email=${encodeURIComponent(emailStr)}`, // Query param
-      `${baseUrl}/qr?id=${encodeURIComponent(emailStr)}`, // Alternative query param
-      `${baseUrl}/qr` // Base QR
-    ];
-    
-    let lastError = null;
-    for (const targetUrl of tryUrls) {
-      try {
-        console.log(`Proxying QR request to: ${targetUrl}`);
-        const response = await axios.get(targetUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8'
-          },
-          timeout: 10000
-        });
-        
-        if (typeof response.data === 'string') {
-          return res.send(response.data);
-        } else if (response.data) {
-          return res.json(response.data);
-        }
-      } catch (error: any) {
-        lastError = error;
-        if (error.response?.status !== 404) break; // If it's not a 404, maybe the server is down, so stop trying
-      }
+    try {
+      console.log(`Proxying QR request to: ${targetUrl}`);
+      const response = await axios.get(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json,text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8'
+        },
+        timeout: 15000
+      });
+      
+      return res.json(response.data);
+    } catch (error: any) {
+      console.error(`QR Proxy failed for ${targetUrl}:`, error.message);
+      res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
     }
-
-    console.error(`All QR Proxy attempts failed for ${baseUrl}. Last error:`, lastError?.message);
-    res.status(lastError?.response?.status || 500).json(lastError?.response?.data || { error: lastError?.message });
   });
 
   app.get("/api/whatsapp-server/status", async (req, res) => {
     const { url, email } = req.query;
-    if (!url || !email) return res.status(400).json({ error: "URL and Email are required" });
+    const targetUrl = `https://techtaire-server-production.up.railway.app/status?email=${encodeURIComponent(email as string)}`;
     
-    const baseUrl = (url as string).replace(/\/$/, "");
-    const emailStr = email as string;
-    
-    const tryUrls = [
-      `${baseUrl}/status/${emailStr}`,
-      `${baseUrl}/status/${encodeURIComponent(emailStr)}`,
-      `${baseUrl}/status?email=${encodeURIComponent(emailStr)}`
-    ];
-    
-    let lastError = null;
-    for (const targetUrl of tryUrls) {
-      try {
-        console.log(`Proxying status request to: ${targetUrl}`);
-        const response = await axios.get(targetUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-          },
-          timeout: 5000
-        });
-        return res.json(response.data);
-      } catch (error: any) {
-        lastError = error;
-        if (error.response?.status !== 404) break;
-      }
+    try {
+      console.log(`Proxying status request to: ${targetUrl}`);
+      const response = await axios.get(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        },
+        timeout: 10000
+      });
+      return res.json(response.data);
+    } catch (error: any) {
+      console.error(`Status Proxy failed for ${targetUrl}:`, error.message);
+      res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
     }
-
-    res.status(lastError?.response?.status || 500).json(lastError?.response?.data || { error: lastError?.message });
   });
 
   app.post("/api/whatsapp-server/send", async (req, res) => {
-    const { url, phone, message } = req.body;
+    const { url, phone, message, email } = req.body;
     if (!url) return res.status(400).json({ error: "URL is required" });
     try {
-      const response = await axios.post(`${url}/send`, { phone, message });
+      const response = await axios.post(`${url}/send`, { phone, message, email });
       res.json(response.data);
     } catch (error: any) {
       console.error("WhatsApp Server Send Proxy Error:", error.message);
