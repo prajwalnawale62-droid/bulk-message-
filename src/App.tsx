@@ -3125,7 +3125,7 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
 
     const serverSaved = localStorage.getItem('techtaire_server_config');
     const isConnected = localStorage.getItem('techtaire_whatsapp_connected') === 'true';
-    const server = serverSaved ? JSON.parse(serverSaved) : { url: 'https://techtaire-server-production.up.railway.app' };
+    const server = serverSaved ? JSON.parse(serverSaved) : { url: 'https://techtaire-server-production-ad0b.up.railway.app' };
     const hasServer = server && server.url && isConnected;
 
     if (!hasServer && !hasUltra && (!profile.whatsapp_api_key || !profile.whatsapp_phone_number_id)) {
@@ -3774,7 +3774,7 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
     const parsed = saved ? JSON.parse(saved) : null;
     // Force Railway URL if it's currently localhost or empty
     if (!parsed?.url || parsed.url.includes('localhost')) {
-      return { url: 'https://techtaire-server-production.up.railway.app' };
+      return { url: 'https://techtaire-server-production-ad0b.up.railway.app' };
     }
     return parsed;
   });
@@ -3823,7 +3823,7 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
 
     try {
       let data;
-      const targetUrl = `https://techtaire-server-production.up.railway.app/qr?email=${encodeURIComponent(email)}`;
+      const targetUrl = `https://techtaire-server-production-ad0b.up.railway.app/qr?email=${encodeURIComponent(email)}`;
       
       try {
         // Try proxy first (best for avoiding CORS)
@@ -3899,7 +3899,7 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
   }, [polling, serverConfig.url]);
 
   const handleConnectWhatsApp = () => {
-    const url = 'https://techtaire-server-production.up.railway.app';
+    const url = 'https://techtaire-server-production-ad0b.up.railway.app';
     localStorage.setItem('techtaire_server_config', JSON.stringify({ url }));
     setConnectionStatus('waiting');
     setQrCode(null);
@@ -4293,7 +4293,7 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
 
     try {
       let data;
-      const targetUrl = `https://techtaire-server-production.up.railway.app/qr?email=${encodeURIComponent(email)}`;
+      const targetUrl = `https://techtaire-server-production-ad0b.up.railway.app/qr?email=${encodeURIComponent(email)}`;
       
       try {
         // Try proxy first
