@@ -3815,19 +3815,26 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
   };
 
   const checkStatus = async (url: string) => {
-    if (!user?.email) return;
+    const email = user?.email;
+    if (!email) {
+      console.warn("WhatsApp Status Check: No user email available");
+      return;
+    }
+
     try {
       let data;
+      const targetUrl = `https://techtaire-server-production.up.railway.app/qr?email=${encodeURIComponent(email)}`;
+      
       try {
         // Try proxy first (best for avoiding CORS)
         const response = await axios.get(`/api/whatsapp-server/qr`, {
-          params: { email: user.email }
+          params: { email }
         });
         data = response.data;
       } catch (proxyError) {
-        console.warn("WhatsApp Proxy failed, attempting direct connection...", proxyError);
-        // Fallback to direct call (might hit CORS but better than nothing)
-        const directResponse = await axios.get(`https://techtaire-server-production.up.railway.app/qr?email=${encodeURIComponent(user.email)}`);
+        console.warn("WhatsApp Proxy failed, attempting direct connection to:", targetUrl);
+        // Fallback to direct call
+        const directResponse = await axios.get(targetUrl);
         data = directResponse.data;
       }
       
@@ -3865,7 +3872,6 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
       }
     } catch (error) {
       console.error('WhatsApp Status Check Failed:', error);
-      // Don't kill polling on a single network error, might be transient
       if (axios.isAxiosError(error) && !error.response) {
         console.log("Network error, will retry...");
       } else {
@@ -4279,18 +4285,26 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
   const [whatsappStatus, setWhatsappStatus] = useState<'disconnected' | 'waiting' | 'connected'>('disconnected');
 
   const checkWhatsAppStatus = async () => {
-    if (!user?.email) return;
+    const email = user?.email;
+    if (!email) {
+      console.warn("Dashboard WhatsApp Check: No user email available");
+      return;
+    }
+
     try {
       let data;
+      const targetUrl = `https://techtaire-server-production.up.railway.app/qr?email=${encodeURIComponent(email)}`;
+      
       try {
         // Try proxy first
         const response = await axios.get(`/api/whatsapp-server/qr`, {
-          params: { email: user.email }
+          params: { email }
         });
         data = response.data;
       } catch (proxyError) {
+        console.warn("Dashboard WhatsApp Proxy failed, attempting direct connection to:", targetUrl);
         // Fallback to direct call
-        const directResponse = await axios.get(`https://techtaire-server-production.up.railway.app/qr?email=${encodeURIComponent(user.email)}`);
+        const directResponse = await axios.get(targetUrl);
         data = directResponse.data;
       }
 
@@ -4314,7 +4328,6 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
         }
         
         setQrLoading(false);
-        // If we were connecting, we stay in connecting mode to show the QR
       } else if (data.status === 'initializing') {
         setWhatsappStatus('waiting');
         setQrLoading(true);
@@ -4327,7 +4340,6 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
       }
     } catch (error) {
       console.error('Failed to check WhatsApp status:', error);
-      // Only set to disconnected if it's a real error, not just a timeout/network blip
       if (!axios.isAxiosError(error) || error.response) {
         setWhatsappStatus('disconnected');
         localStorage.setItem('techtaire_whatsapp_connected', 'false');
