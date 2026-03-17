@@ -405,17 +405,94 @@ async function startServer() {
     res.status(200).send("OK");
   });
 
+  app.get("/qr/:email", (req, res) => {
+    const email = req.params.email;
+    // Mocking the QR code HTML as requested
+    // In a real scenario with whatsapp-web.js, this would return the actual QR code
+    const qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=whatsapp-connection-${email}-${Date.now()}`;
+    res.send(`
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: white; padding: 20px; border-radius: 16px;">
+        <img src="${qrImage}" alt="WhatsApp QR Code" style="width: 200px; height: 200px;" />
+        <p style="color: #333; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Scan with WhatsApp</p>
+      </div>
+    `);
+  });
+
   // WhatsApp Server Proxy
   app.get("/api/whatsapp-server/qr", async (req, res) => {
-    const { url } = req.query;
+    const { url, email } = req.query;
     if (!url) return res.status(400).json({ error: "URL is required" });
-    try {
-      const response = await axios.get(`${url}/qr`);
-      res.json(response.data);
-    } catch (error: any) {
-      console.error("WhatsApp Server QR Proxy Error:", error.message);
-      res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
+    
+    const baseUrl = (url as string).replace(/\/$/, "");
+    const emailStr = email as string;
+    
+    // Try multiple patterns if one fails
+    const tryUrls = [
+      `${baseUrl}/qr/${emailStr}`, // Raw email
+      `${baseUrl}/qr/${encodeURIComponent(emailStr)}`, // Encoded email
+      `${baseUrl}/qr?email=${encodeURIComponent(emailStr)}`, // Query param
+      `${baseUrl}/qr?id=${encodeURIComponent(emailStr)}`, // Alternative query param
+      `${baseUrl}/qr` // Base QR
+    ];
+    
+    let lastError = null;
+    for (const targetUrl of tryUrls) {
+      try {
+        console.log(`Proxying QR request to: ${targetUrl}`);
+        const response = await axios.get(targetUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8'
+          },
+          timeout: 10000
+        });
+        
+        if (typeof response.data === 'string') {
+          return res.send(response.data);
+        } else if (response.data) {
+          return res.json(response.data);
+        }
+      } catch (error: any) {
+        lastError = error;
+        if (error.response?.status !== 404) break; // If it's not a 404, maybe the server is down, so stop trying
+      }
     }
+
+    console.error(`All QR Proxy attempts failed for ${baseUrl}. Last error:`, lastError?.message);
+    res.status(lastError?.response?.status || 500).json(lastError?.response?.data || { error: lastError?.message });
+  });
+
+  app.get("/api/whatsapp-server/status", async (req, res) => {
+    const { url, email } = req.query;
+    if (!url || !email) return res.status(400).json({ error: "URL and Email are required" });
+    
+    const baseUrl = (url as string).replace(/\/$/, "");
+    const emailStr = email as string;
+    
+    const tryUrls = [
+      `${baseUrl}/status/${emailStr}`,
+      `${baseUrl}/status/${encodeURIComponent(emailStr)}`,
+      `${baseUrl}/status?email=${encodeURIComponent(emailStr)}`
+    ];
+    
+    let lastError = null;
+    for (const targetUrl of tryUrls) {
+      try {
+        console.log(`Proxying status request to: ${targetUrl}`);
+        const response = await axios.get(targetUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          },
+          timeout: 5000
+        });
+        return res.json(response.data);
+      } catch (error: any) {
+        lastError = error;
+        if (error.response?.status !== 404) break;
+      }
+    }
+
+    res.status(lastError?.response?.status || 500).json(lastError?.response?.data || { error: lastError?.message });
   });
 
   app.post("/api/whatsapp-server/send", async (req, res) => {

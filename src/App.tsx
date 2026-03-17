@@ -54,7 +54,8 @@ import {
   SendHorizontal,
   Bell,
   Smile,
-  MessageCircle
+  MessageCircle,
+  QrCode
 } from 'lucide-react';
 import EmojiPicker, { Theme as EmojiTheme } from 'emoji-picker-react';
 import { motion, AnimatePresence, useScroll, useSpring, useTransform } from 'framer-motion';
@@ -1238,7 +1239,7 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
                   {view === 'history' && <HistoryView user={user} showNotify={showNotify} />}
                   {view === 'guide' && <GuideView setView={setView} />}
                   {view === 'plans' && <PricingPage setView={setView} isDashboard onSelect={handlePayment} currentPlan={profile?.plan} />}
-                  {view === 'settings' && <SettingsView profile={profile} onUpdate={fetchProfile} onOpenModal={(type) => setLegalModal(type)} showNotify={showNotify} />}
+                  {view === 'settings' && <SettingsView user={user} profile={profile} onUpdate={fetchProfile} onOpenModal={(type) => setLegalModal(type)} showNotify={showNotify} />}
                   {view === 'admin' && <AdminView user={user} />}
                 </motion.div>
               </AnimatePresence>
@@ -3739,7 +3740,7 @@ function HistoryView({ user, showNotify }: { user: any, showNotify: (m: string, 
   );
 }
 
-function SettingsView({ profile, onUpdate, onOpenModal, showNotify }: { profile: any, onUpdate: () => void, onOpenModal: (type: any) => void, showNotify: (m: string, t?: 'success' | 'error' | 'info' | 'warning') => void }) {
+function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { user: any, profile: any, onUpdate: () => void, onOpenModal: (type: any) => void, showNotify: (m: string, t?: 'success' | 'error' | 'info' | 'warning') => void }) {
   const [whatsappConfig, setWhatsappConfig] = useState(() => {
     const saved = localStorage.getItem('techtaire_whatsapp_config');
     const parsed = saved ? JSON.parse(saved) : null;
@@ -3754,10 +3755,17 @@ function SettingsView({ profile, onUpdate, onOpenModal, showNotify }: { profile:
   });
   const [serverConfig, setServerConfig] = useState(() => {
     const saved = localStorage.getItem('techtaire_server_config');
-    return saved ? JSON.parse(saved) : { url: 'https://techtaire-server-production.up.railway.app' };
+    const parsed = saved ? JSON.parse(saved) : null;
+    // Force Railway URL if it's currently localhost or empty
+    if (!parsed?.url || parsed.url.includes('localhost')) {
+      return { url: 'https://techtaire-server-production.up.railway.app' };
+    }
+    return parsed;
   });
   const [qrCode, setQrCode] = useState<string | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'pending' | 'connected'>('disconnected');
+  const [qrHtml, setQrHtml] = useState<string | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'waiting' | 'connected'>('disconnected');
   const [polling, setPolling] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -3791,34 +3799,57 @@ function SettingsView({ profile, onUpdate, onOpenModal, showNotify }: { profile:
   };
 
   const checkStatus = async (url: string) => {
+    if (!user?.email) return;
+    
     try {
-      const response = await axios.get(`/api/whatsapp-server/qr?url=${encodeURIComponent(url)}`);
-      if (response.data.status === 'connected') {
+      const serverUrl = url || 'https://techtaire-server-production.up.railway.app';
+      const response = await axios.get(`/api/whatsapp-server/status?url=${encodeURIComponent(serverUrl)}&email=${user.email}`);
+      
+      const status = response.data.status?.toLowerCase();
+      if (status === 'connected' || status === 'ready') {
         setConnectionStatus('connected');
-        setQrCode(null);
         setPolling(false);
+        setQrHtml(null);
+        setQrCode(null);
         localStorage.setItem('techtaire_whatsapp_connected', 'true');
-      } else if (response.data.status === 'pending') {
-        setConnectionStatus('pending');
-        setQrCode(response.data.qr);
+        return;
+      } else if (status === 'waiting' || status === 'qr' || status === 'qr_ready') {
+        setConnectionStatus('waiting');
         setPolling(true);
+        localStorage.setItem('techtaire_whatsapp_connected', 'false');
+        
+        // If we don't have a QR yet, fetch it
+        if (!qrHtml && !qrCode) {
+          const qrResponse = await axios.get(`/api/whatsapp-server/qr?url=${encodeURIComponent(serverUrl)}&email=${user.email}`);
+          const data = qrResponse.data;
+          
+          if (typeof data === 'string') {
+            if (data.includes('<')) {
+              setQrHtml(data);
+              setQrCode(null);
+            } else if (data.startsWith('data:image') || data.length > 100) {
+              setQrCode(data.startsWith('data:image') ? data : `data:image/png;base64,${data}`);
+              setQrHtml(null);
+            }
+          } else if (data && typeof data === 'object') {
+            const qr = data.qr || data.data || data.image || data.base64;
+            if (qr) {
+              setQrCode(qr.startsWith('data:image') ? qr : `data:image/png;base64,${qr}`);
+              setQrHtml(null);
+            }
+          }
+        }
+        return;
       } else {
         setConnectionStatus('disconnected');
-        setQrCode(null);
-        setPolling(false);
-        localStorage.removeItem('techtaire_whatsapp_connected');
+        localStorage.setItem('techtaire_whatsapp_connected', 'false');
       }
     } catch (err: any) {
-      const errorMsg = err.response?.data?.error || err.message;
-      console.error("Status check failed:", errorMsg);
-      // Don't immediately stop polling on a single network error, maybe retry?
-      // But for now, let's at least show the error clearly in console
-      if (err.message === 'Network Error' || err.response?.status === 500) {
-        // This might be a temporary server issue
-      } else {
-        setConnectionStatus('disconnected');
-        setPolling(false);
-      }
+      console.error("Status check failed:", err.message);
+      setConnectionStatus('disconnected');
+      localStorage.setItem('techtaire_whatsapp_connected', 'false');
+    } finally {
+      setQrLoading(false);
     }
   };
 
@@ -3833,7 +3864,7 @@ function SettingsView({ profile, onUpdate, onOpenModal, showNotify }: { profile:
     if (polling) {
       interval = setInterval(() => {
         checkStatus(serverConfig.url);
-      }, 3000);
+      }, 5000);
     }
     return () => clearInterval(interval);
   }, [polling, serverConfig.url]);
@@ -3999,10 +4030,10 @@ function SettingsView({ profile, onUpdate, onOpenModal, showNotify }: { profile:
             <div className="flex items-center gap-3">
               <div className={cn(
                 "w-3 h-3 rounded-full animate-pulse",
-                connectionStatus === 'connected' ? "bg-emerald-500" : connectionStatus === 'pending' ? "bg-amber-500" : "bg-red-500"
+                connectionStatus === 'connected' ? "bg-emerald-500" : connectionStatus === 'waiting' ? "bg-amber-500" : "bg-red-500"
               )} />
               <span className="text-sm font-bold text-white uppercase tracking-widest">
-                {connectionStatus === 'connected' ? "Connected" : connectionStatus === 'pending' ? "Connecting..." : "Disconnected"}
+                {connectionStatus === 'connected' ? "Connected" : connectionStatus === 'waiting' ? "Waiting for Scan" : "Disconnected"}
               </span>
             </div>
             <button 
@@ -4013,6 +4044,26 @@ function SettingsView({ profile, onUpdate, onOpenModal, showNotify }: { profile:
               {polling ? "Polling..." : connectionStatus === 'connected' ? "Connected" : "Connect WhatsApp"}
             </button>
           </div>
+
+          {(qrLoading || (polling && !qrCode && !qrHtml)) && (
+            <div className="flex flex-col items-center gap-4 p-10 bg-white/5 rounded-3xl border border-white/10">
+              <RefreshCw className="animate-spin text-amethyst" size={40} />
+              <p className="text-sm font-black text-white uppercase tracking-widest">Generating QR Code...</p>
+            </div>
+          )}
+
+          {qrHtml && (
+            <div className="flex flex-col items-center gap-4 p-6 bg-white rounded-3xl overflow-hidden">
+              <p className="text-xs font-black text-deep-night uppercase tracking-widest">Scan QR Code with WhatsApp</p>
+              <div 
+                className="w-full flex justify-center"
+                dangerouslySetInnerHTML={{ __html: qrHtml }} 
+              />
+              <p className="text-[10px] text-deep-night/40 italic text-center">
+                Open WhatsApp &gt; Menu or Settings &gt; Linked Devices &gt; Link a Device
+              </p>
+            </div>
+          )}
 
           {qrCode && (
             <div className="flex flex-col items-center gap-4 p-6 bg-white rounded-3xl">
@@ -4195,6 +4246,93 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [chartData, setChartData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [qrHtml, setQrHtml] = useState<string | null>(null);
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [whatsappStatus, setWhatsappStatus] = useState<'disconnected' | 'waiting' | 'connected'>('disconnected');
+
+  const checkWhatsAppStatus = async () => {
+    if (!user?.email) return;
+    try {
+      const serverUrl = 'https://techtaire-server-production.up.railway.app';
+      const response = await axios.get(`/api/whatsapp-server/status?url=${encodeURIComponent(serverUrl)}&email=${user.email}`);
+      
+      const status = response.data.status?.toLowerCase();
+      if (status === 'connected' || status === 'ready') {
+        setWhatsappStatus('connected');
+        setIsConnecting(false);
+        setQrHtml(null);
+        setQrCode(null);
+        localStorage.setItem('techtaire_whatsapp_connected', 'true');
+      } else if (status === 'waiting' || status === 'qr' || status === 'qr_ready') {
+        setWhatsappStatus('waiting');
+        setIsConnecting(true);
+        localStorage.setItem('techtaire_whatsapp_connected', 'false');
+      } else {
+        setWhatsappStatus('disconnected');
+        localStorage.setItem('techtaire_whatsapp_connected', 'false');
+        // If we are disconnected according to server, and we weren't just clicking "Connect"
+        // then we should make sure isConnecting is false
+        if (whatsappStatus === 'connected') {
+          setIsConnecting(false);
+        }
+      }
+    } catch (err) {
+      console.error("Status check failed", err);
+    }
+  };
+
+  const fetchQR = async () => {
+    if (!user?.email) return;
+    try {
+      const serverUrl = 'https://techtaire-server-production.up.railway.app';
+      const response = await axios.get(`/api/whatsapp-server/qr?url=${encodeURIComponent(serverUrl)}&email=${user.email}`);
+      
+      if (typeof response.data === 'string') {
+        if (response.data.includes('<')) {
+          if (response.data.toLowerCase().includes('connected')) return;
+          setQrHtml(response.data);
+          setQrCode(null);
+        } else if (response.data.startsWith('data:image') || response.data.length > 100) {
+          // Likely a base64 string
+          setQrCode(response.data.startsWith('data:image') ? response.data : `data:image/png;base64,${response.data}`);
+          setQrHtml(null);
+        }
+      } else if (response.data && typeof response.data === 'object') {
+        const qr = response.data.qr || response.data.data || response.data.image || response.data.base64;
+        if (qr) {
+          setQrCode(qr.startsWith('data:image') ? qr : `data:image/png;base64,${qr}`);
+          setQrHtml(null);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch QR", err);
+    }
+  };
+
+  const handleConnect = () => {
+    setQrLoading(true);
+    setIsConnecting(true);
+    fetchQR().finally(() => setQrLoading(false));
+  };
+
+  useEffect(() => {
+    let interval: any;
+    // Always poll for status if we are on dashboard
+    interval = setInterval(checkWhatsAppStatus, 5000);
+    checkWhatsAppStatus(); // Initial check
+    
+    return () => clearInterval(interval);
+  }, [user]);
+
+  useEffect(() => {
+    let interval: any;
+    if (isConnecting && whatsappStatus !== 'connected') {
+      interval = setInterval(fetchQR, 5000);
+    }
+    return () => clearInterval(interval);
+  }, [isConnecting, whatsappStatus]);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -4279,6 +4417,99 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
 
   return (
     <div className="space-y-10">
+      {/* WhatsApp Connection Section */}
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass-panel p-8 border-amethyst/20 overflow-hidden relative"
+      >
+        <div className="absolute top-0 right-0 w-64 h-64 bg-amethyst/5 rounded-full -mr-32 -mt-32 blur-3xl" />
+        <div className="relative flex flex-col lg:flex-row items-center justify-between gap-8">
+          <div className="flex-1 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-500">
+                <MessageCircle size={20} />
+              </div>
+              <div className="flex flex-col">
+                <h3 className="text-2xl font-black text-white tracking-tight">WhatsApp Connection</h3>
+                <div className="flex items-center gap-2 mt-1">
+                  <div className={cn(
+                    "w-2 h-2 rounded-full",
+                    whatsappStatus === 'connected' ? "bg-emerald-500" : 
+                    whatsappStatus === 'waiting' ? "bg-amber-500 animate-pulse" : 
+                    isConnecting ? "bg-blue-500 animate-pulse" : "bg-red-500"
+                  )} />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-soft-lavender/40">
+                    {whatsappStatus === 'connected' ? "Connected" : 
+                     whatsappStatus === 'waiting' ? "Waiting for Scan" : 
+                     isConnecting ? "Initializing..." : "Disconnected"}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <p className="text-soft-lavender/60 text-sm max-w-md">
+              Connect your WhatsApp account to start sending automated campaigns and messages directly from the dashboard.
+            </p>
+            {whatsappStatus !== 'connected' && !isConnecting ? (
+              <button 
+                onClick={handleConnect}
+                className="btn-premium px-8 py-4 flex items-center gap-2 group"
+              >
+                <QrCode size={18} className="group-hover:rotate-12 transition-transform" />
+                <span>Connect WhatsApp</span>
+              </button>
+            ) : whatsappStatus === 'connected' ? (
+              <div className="flex items-center gap-3 text-emerald-400 font-bold bg-emerald-500/10 px-6 py-3 rounded-2xl border border-emerald-500/20">
+                <Check size={20} />
+                <span>Connected & Ready</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 text-amber-400 font-bold">
+                <RefreshCw size={16} className="animate-spin" />
+                <span>{whatsappStatus === 'waiting' ? "Waiting for Scan..." : "Connecting..."}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="w-full lg:w-72 aspect-square glass-panel p-4 flex items-center justify-center bg-white/5 border-white/10 relative overflow-hidden">
+            {qrLoading ? (
+              <div className="flex flex-col items-center gap-3">
+                <RefreshCw className="animate-spin text-amethyst" size={32} />
+                <p className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Generating QR...</p>
+              </div>
+            ) : qrHtml ? (
+              <div 
+                className="w-full h-full flex items-center justify-center"
+                dangerouslySetInnerHTML={{ __html: qrHtml }} 
+              />
+            ) : qrCode ? (
+              <div className="w-full h-full flex items-center justify-center p-2 bg-white rounded-xl">
+                <img src={qrCode} alt="WhatsApp QR" className="w-full h-full object-contain" />
+              </div>
+            ) : isConnecting && !qrHtml && !qrCode ? (
+              <div className="flex flex-col items-center gap-3">
+                <RefreshCw className="animate-spin text-amethyst" size={32} />
+                <p className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Waiting for QR...</p>
+              </div>
+            ) : whatsappStatus === 'connected' ? (
+              <div className="flex flex-col items-center gap-3 text-center p-6">
+                <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-500">
+                  <Check size={40} />
+                </div>
+                <p className="text-xs font-black text-emerald-400 uppercase tracking-widest text-center">WhatsApp Active</p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-3 text-center p-6">
+                <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center text-soft-lavender/20">
+                  <QrCode size={32} />
+                </div>
+                <p className="text-[10px] font-black text-soft-lavender/20 uppercase tracking-widest text-center">QR Code will appear here</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </motion.div>
+
       <div className="glass-panel p-6 flex items-center justify-between border-amethyst/20">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-amethyst/10 rounded-2xl flex items-center justify-center text-amethyst">
