@@ -3111,7 +3111,7 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
 
     const serverSaved = localStorage.getItem('techtaire_server_config');
     const isConnected = localStorage.getItem('techtaire_whatsapp_connected') === 'true';
-    const server = serverSaved ? JSON.parse(serverSaved) : { url: 'https://techtaire-server-production.up.railway.app' };
+    const server = serverSaved ? JSON.parse(serverSaved) : { url: 'https://techtaire-server-production-ad0b.up.railway.app' };
     const hasServer = server && server.url && isConnected;
 
     if (!hasServer && !hasUltra && (!profile.whatsapp_api_key || !profile.whatsapp_phone_number_id)) {
@@ -3212,8 +3212,7 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
 
         try {
           if (hasServer) {
-            await axios.post('/api/whatsapp-server/send', {
-              url: server.url,
+            await axios.post(`${server.url}/send`, {
               phone: cleanNumber,
               message: message
             });
@@ -3758,7 +3757,7 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
     const parsed = saved ? JSON.parse(saved) : null;
     // Force Railway URL if it's currently localhost or empty
     if (!parsed?.url || parsed.url.includes('localhost')) {
-      return { url: 'https://techtaire-server-production.up.railway.app' };
+      return { url: 'https://techtaire-server-production-ad0b.up.railway.app' };
     }
     return parsed;
   });
@@ -3799,57 +3798,30 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
   };
 
   const checkStatus = async (url: string) => {
-    if (!user?.email) return;
-    
     try {
-      const serverUrl = url || 'https://techtaire-server-production.up.railway.app';
-      const response = await axios.get(`/api/whatsapp-server/status?url=${encodeURIComponent(serverUrl)}&email=${user.email}`);
-      
-      const status = response.data.status?.toLowerCase();
-      if (status === 'connected' || status === 'ready') {
+      const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
+      const response = await axios.get(`${serverUrl}/status`);
+      if (response.data.connected === true) {
         setConnectionStatus('connected');
         setPolling(false);
         setQrHtml(null);
         setQrCode(null);
         localStorage.setItem('techtaire_whatsapp_connected', 'true');
-        return;
-      } else if (status === 'waiting' || status === 'qr' || status === 'qr_ready') {
+      } else {
         setConnectionStatus('waiting');
         setPolling(true);
         localStorage.setItem('techtaire_whatsapp_connected', 'false');
         
-        // If we don't have a QR yet, fetch it
-        if (!qrHtml && !qrCode) {
-          const qrResponse = await axios.get(`/api/whatsapp-server/qr?url=${encodeURIComponent(serverUrl)}&email=${user.email}`);
-          const data = qrResponse.data;
-          
-          if (typeof data === 'string') {
-            if (data.includes('<')) {
-              setQrHtml(data);
-              setQrCode(null);
-            } else if (data.startsWith('data:image') || data.length > 100) {
-              setQrCode(data.startsWith('data:image') ? data : `data:image/png;base64,${data}`);
-              setQrHtml(null);
-            }
-          } else if (data && typeof data === 'object') {
-            const qr = data.qr || data.data || data.image || data.base64;
-            if (qr) {
-              setQrCode(qr.startsWith('data:image') ? qr : `data:image/png;base64,${qr}`);
-              setQrHtml(null);
-            }
-          }
+        // If waiting, fetch QR
+        const qrResponse = await axios.get(`${serverUrl}/qr`);
+        if (qrResponse.data.qr) {
+          setQrCode(qrResponse.data.qr);
         }
-        return;
-      } else {
-        setConnectionStatus('disconnected');
-        localStorage.setItem('techtaire_whatsapp_connected', 'false');
       }
-    } catch (err: any) {
-      console.error("Status check failed:", err.message);
+    } catch (error) {
+      console.error('Status check failed:', error);
       setConnectionStatus('disconnected');
-      localStorage.setItem('techtaire_whatsapp_connected', 'false');
-    } finally {
-      setQrLoading(false);
+      setPolling(false);
     }
   };
 
@@ -3869,12 +3841,12 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
     return () => clearInterval(interval);
   }, [polling, serverConfig.url]);
 
-  const handleConnectWhatsApp = () => {
-    localStorage.setItem('techtaire_server_config', JSON.stringify(serverConfig));
-    setConnectionStatus('disconnected');
+  const handleConnectWhatsApp = async () => {
+    const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
+    setConnectionStatus('waiting');
     setQrCode(null);
-    setPolling(true);
-    checkStatus(serverConfig.url);
+    setQrHtml(null);
+    checkStatus(serverUrl);
   };
 
   const handleTestConnection = async () => {
@@ -4253,61 +4225,35 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
   const [whatsappStatus, setWhatsappStatus] = useState<'disconnected' | 'waiting' | 'connected'>('disconnected');
 
   const checkWhatsAppStatus = async () => {
-    if (!user?.email) return;
     try {
-      const serverUrl = 'https://techtaire-server-production.up.railway.app';
-      const response = await axios.get(`/api/whatsapp-server/status?url=${encodeURIComponent(serverUrl)}&email=${user.email}`);
-      
-      const status = response.data.status?.toLowerCase();
-      if (status === 'connected' || status === 'ready') {
+      const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
+      const response = await axios.get(`${serverUrl}/status`);
+      if (response.data.connected === true) {
         setWhatsappStatus('connected');
         setIsConnecting(false);
         setQrHtml(null);
         setQrCode(null);
         localStorage.setItem('techtaire_whatsapp_connected', 'true');
-      } else if (status === 'waiting' || status === 'qr' || status === 'qr_ready') {
-        setWhatsappStatus('waiting');
-        setIsConnecting(true);
-        localStorage.setItem('techtaire_whatsapp_connected', 'false');
       } else {
         setWhatsappStatus('disconnected');
         localStorage.setItem('techtaire_whatsapp_connected', 'false');
-        // If we are disconnected according to server, and we weren't just clicking "Connect"
-        // then we should make sure isConnecting is false
-        if (whatsappStatus === 'connected') {
-          setIsConnecting(false);
-        }
       }
-    } catch (err) {
-      console.error("Status check failed", err);
+    } catch (error) {
+      console.error('Failed to check WhatsApp status:', error);
+      setWhatsappStatus('disconnected');
     }
   };
 
   const fetchQR = async () => {
-    if (!user?.email) return;
     try {
-      const serverUrl = 'https://techtaire-server-production.up.railway.app';
-      const response = await axios.get(`/api/whatsapp-server/qr?url=${encodeURIComponent(serverUrl)}&email=${user.email}`);
-      
-      if (typeof response.data === 'string') {
-        if (response.data.includes('<')) {
-          if (response.data.toLowerCase().includes('connected')) return;
-          setQrHtml(response.data);
-          setQrCode(null);
-        } else if (response.data.startsWith('data:image') || response.data.length > 100) {
-          // Likely a base64 string
-          setQrCode(response.data.startsWith('data:image') ? response.data : `data:image/png;base64,${response.data}`);
-          setQrHtml(null);
-        }
-      } else if (response.data && typeof response.data === 'object') {
-        const qr = response.data.qr || response.data.data || response.data.image || response.data.base64;
-        if (qr) {
-          setQrCode(qr.startsWith('data:image') ? qr : `data:image/png;base64,${qr}`);
-          setQrHtml(null);
-        }
+      const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
+      const response = await axios.get(`${serverUrl}/qr`);
+      if (response.data.qr) {
+        setQrCode(response.data.qr);
+        setQrHtml(null);
       }
-    } catch (err) {
-      console.error("Failed to fetch QR", err);
+    } catch (error) {
+      console.error('Failed to fetch QR code:', error);
     }
   };
 
