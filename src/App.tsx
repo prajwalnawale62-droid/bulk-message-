@@ -93,6 +93,16 @@ const THEME = {
   dark: '#050505', // Deep Night
 };
 
+const formatQrData = (qr: string) => {
+  if (!qr) return null;
+  if (qr.startsWith('data:image') || qr.startsWith('http') || qr.startsWith('<svg')) return qr;
+  // If it looks like base64 but lacks prefix
+  if (/^[A-Za-z0-9+/=]+$/.test(qr.substring(0, 100))) {
+    return `data:image/png;base64,${qr}`;
+  }
+  return qr;
+};
+
 const LEGAL_CONTENT = {
   privacy: {
     title: "Privacy Policy",
@@ -3807,28 +3817,42 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
   const checkStatus = async (url: string) => {
     if (!user?.email) return;
     try {
-      // Use proxy to avoid CORS issues
-      const response = await axios.get(`/api/whatsapp-server/qr`, {
-        params: {
-          email: user.email
-        }
-      });
+      let data;
+      try {
+        // Try proxy first (best for avoiding CORS)
+        const response = await axios.get(`/api/whatsapp-server/qr`, {
+          params: { email: user.email }
+        });
+        data = response.data;
+      } catch (proxyError) {
+        console.warn("WhatsApp Proxy failed, attempting direct connection...", proxyError);
+        // Fallback to direct call (might hit CORS but better than nothing)
+        const directResponse = await axios.get(`https://techtaire-server-production.up.railway.app/qr?email=${encodeURIComponent(user.email)}`);
+        data = directResponse.data;
+      }
       
-      if (response.data.status === 'connected') {
+      if (data.status === 'connected') {
         setConnectionStatus('connected');
         setPolling(false);
         setQrHtml(null);
         setQrCode(null);
         setQrLoading(false);
         localStorage.setItem('techtaire_whatsapp_connected', 'true');
-      } else if (response.data.status === 'pending') {
+      } else if (data.status === 'pending') {
         setConnectionStatus('waiting');
         setPolling(true);
         localStorage.setItem('techtaire_whatsapp_connected', 'false');
-        setQrCode(response.data.qr);
-        setQrHtml(null);
+        
+        const qrData = formatQrData(data.qr);
+        if (qrData?.startsWith('<svg')) {
+          setQrHtml(qrData);
+          setQrCode(null);
+        } else {
+          setQrCode(qrData);
+          setQrHtml(null);
+        }
         setQrLoading(false);
-      } else if (response.data.status === 'initializing') {
+      } else if (data.status === 'initializing') {
         setConnectionStatus('waiting');
         setPolling(true);
         setQrLoading(true);
@@ -3840,10 +3864,15 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
         setQrLoading(false);
       }
     } catch (error) {
-      console.error('Status check failed:', error);
-      setConnectionStatus('disconnected');
-      setPolling(false);
-      setQrLoading(false);
+      console.error('WhatsApp Status Check Failed:', error);
+      // Don't kill polling on a single network error, might be transient
+      if (axios.isAxiosError(error) && !error.response) {
+        console.log("Network error, will retry...");
+      } else {
+        setConnectionStatus('disconnected');
+        setPolling(false);
+        setQrLoading(false);
+      }
     }
   };
 
@@ -4252,27 +4281,41 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
   const checkWhatsAppStatus = async () => {
     if (!user?.email) return;
     try {
-      // Use proxy to fetch QR and status in one go
-      const response = await axios.get(`/api/whatsapp-server/qr`, {
-        params: {
-          email: user.email
-        }
-      });
-      
-      if (response.data.status === 'connected') {
+      let data;
+      try {
+        // Try proxy first
+        const response = await axios.get(`/api/whatsapp-server/qr`, {
+          params: { email: user.email }
+        });
+        data = response.data;
+      } catch (proxyError) {
+        // Fallback to direct call
+        const directResponse = await axios.get(`https://techtaire-server-production.up.railway.app/qr?email=${encodeURIComponent(user.email)}`);
+        data = directResponse.data;
+      }
+
+      if (data.status === 'connected') {
         setWhatsappStatus('connected');
         setIsConnecting(false);
         setQrHtml(null);
         setQrCode(null);
         setQrLoading(false);
         localStorage.setItem('techtaire_whatsapp_connected', 'true');
-      } else if (response.data.status === 'pending') {
+      } else if (data.status === 'pending') {
         setWhatsappStatus('waiting');
-        setQrCode(response.data.qr);
-        setQrHtml(null);
+        
+        const qrData = formatQrData(data.qr);
+        if (qrData?.startsWith('<svg')) {
+          setQrHtml(qrData);
+          setQrCode(null);
+        } else {
+          setQrCode(qrData);
+          setQrHtml(null);
+        }
+        
         setQrLoading(false);
         // If we were connecting, we stay in connecting mode to show the QR
-      } else if (response.data.status === 'initializing') {
+      } else if (data.status === 'initializing') {
         setWhatsappStatus('waiting');
         setQrLoading(true);
         setQrCode(null);
@@ -4284,8 +4327,11 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
       }
     } catch (error) {
       console.error('Failed to check WhatsApp status:', error);
-      setWhatsappStatus('disconnected');
-      localStorage.setItem('techtaire_whatsapp_connected', 'false');
+      // Only set to disconnected if it's a real error, not just a timeout/network blip
+      if (!axios.isAxiosError(error) || error.response) {
+        setWhatsappStatus('disconnected');
+        localStorage.setItem('techtaire_whatsapp_connected', 'false');
+      }
       setQrLoading(false);
     }
   };
