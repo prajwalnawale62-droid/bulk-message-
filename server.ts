@@ -424,7 +424,9 @@ async function startServer() {
 
   // WhatsApp Server Proxy
   app.get("/api/whatsapp-server/qr", async (req, res) => {
-    const { url, email } = req.query;
+    const { email } = req.query;
+    if (!email) return res.status(400).json({ error: "Email is required" });
+    
     const targetUrl = `https://techtaire-server-production.up.railway.app/qr?email=${encodeURIComponent(email as string)}`;
     
     try {
@@ -445,7 +447,9 @@ async function startServer() {
   });
 
   app.get("/api/whatsapp-server/status", async (req, res) => {
-    const { url, email } = req.query;
+    const { email } = req.query;
+    if (!email) return res.status(400).json({ error: "Email is required" });
+    
     const targetUrl = `https://techtaire-server-production.up.railway.app/status?email=${encodeURIComponent(email as string)}`;
     
     try {
@@ -465,9 +469,14 @@ async function startServer() {
 
   app.post("/api/whatsapp-server/send", async (req, res) => {
     const { url, phone, message, email } = req.body;
-    if (!url) return res.status(400).json({ error: "URL is required" });
+    if (!email) return res.status(400).json({ error: "Email is required" });
+    
+    const baseUrl = (url || 'https://techtaire-server-production.up.railway.app').replace(/\/$/, "");
+    const targetUrl = `${baseUrl}/send?email=${encodeURIComponent(email as string)}`;
+    
     try {
-      const response = await axios.post(`${url}/send`, { phone, message, email });
+      console.log(`Proxying send request to: ${targetUrl}`);
+      const response = await axios.post(targetUrl, { phone, message });
       res.json(response.data);
     } catch (error: any) {
       console.error("WhatsApp Server Send Proxy Error:", error.message);

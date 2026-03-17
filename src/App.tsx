@@ -3805,6 +3805,7 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
   };
 
   const checkStatus = async (url: string) => {
+    if (!user?.email) return;
     try {
       // Use proxy to avoid CORS issues
       const response = await axios.get(`/api/whatsapp-server/qr`, {
@@ -4249,6 +4250,7 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
   const [whatsappStatus, setWhatsappStatus] = useState<'disconnected' | 'waiting' | 'connected'>('disconnected');
 
   const checkWhatsAppStatus = async () => {
+    if (!user?.email) return;
     try {
       // Use proxy to fetch QR and status in one go
       const response = await axios.get(`/api/whatsapp-server/qr`, {
