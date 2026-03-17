@@ -3802,6 +3802,7 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
     try {
       const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
       const response = await axios.get(`${serverUrl}/status?email=${encodeURIComponent(user.email)}`);
+      
       if (response.data.connected === true) {
         setConnectionStatus('connected');
         setPolling(false);
@@ -3813,12 +3814,9 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
         setPolling(true);
         localStorage.setItem('techtaire_whatsapp_connected', 'false');
         
-        // If waiting, fetch QR
-        const qrResponse = await axios.get(`${serverUrl}/qr?email=${encodeURIComponent(user.email)}`);
-        if (qrResponse.data.qr) {
-          setQrCode(qrResponse.data.qr);
-          setQrHtml(null);
-        }
+        // Use the server URL directly for the QR code image
+        setQrCode(`${serverUrl}/qr?email=${encodeURIComponent(user.email)}&t=${Date.now()}`);
+        setQrHtml(null);
       }
     } catch (error) {
       console.error('Status check failed:', error);
@@ -4241,8 +4239,14 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
         setQrHtml(null);
         setQrCode(null);
         localStorage.setItem('techtaire_whatsapp_connected', 'true');
-      } else {
+      } else if (response.data.status === 'waiting' || response.data.status === 'qr' || !response.data.connected) {
         setWhatsappStatus('waiting');
+        // If we are waiting, we should be in "connecting" mode to show the QR
+        if (isConnecting) {
+          fetchQR();
+        }
+      } else {
+        setWhatsappStatus('disconnected');
         localStorage.setItem('techtaire_whatsapp_connected', 'false');
       }
     } catch (error) {
@@ -4253,16 +4257,10 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
   };
 
   const fetchQR = async () => {
-    try {
-      const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
-      const response = await axios.get(`${serverUrl}/qr?email=${encodeURIComponent(user.email)}`);
-      if (response.data.qr) {
-        setQrCode(response.data.qr);
-        setQrHtml(null);
-      }
-    } catch (error) {
-      console.error('Failed to fetch QR code:', error);
-    }
+    const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
+    // Set the QR code URL directly
+    setQrCode(`${serverUrl}/qr?email=${encodeURIComponent(user.email)}&t=${Date.now()}`);
+    setQrHtml(null);
   };
 
   const handleConnect = () => {
