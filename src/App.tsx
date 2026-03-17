@@ -3108,8 +3108,13 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
     const ultramsg = ultramsgSaved ? JSON.parse(ultramsgSaved) : null;
     const hasUltra = ultramsg && ultramsg.url && ultramsg.token;
 
-    if (!hasUltra && (!profile.whatsapp_api_key || !profile.whatsapp_phone_number_id)) {
-      alert("Please configure UltraMsg settings first");
+    const serverSaved = localStorage.getItem('techtaire_server_config');
+    const isConnected = localStorage.getItem('techtaire_whatsapp_connected') === 'true';
+    const server = serverSaved ? JSON.parse(serverSaved) : { url: 'https://techtaire-server-production.up.railway.app' };
+    const hasServer = server && server.url && isConnected;
+
+    if (!hasServer && !hasUltra && (!profile.whatsapp_api_key || !profile.whatsapp_phone_number_id)) {
+      alert("Please configure WhatsApp Server or API settings first");
       return;
     }
 
@@ -3185,12 +3190,6 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
         alert("Free trial is limited to 10 messages total per campaign.");
       }
 
-      if (!profile.whatsapp_api_key || !profile.whatsapp_phone_number_id) {
-        alert("WhatsApp API is not configured. Please go to Settings and enter your Access Token and Phone Number ID.");
-        setSending(false);
-        return;
-      }
-
       // 2. Send messages
       let successCount = 0;
       let failCount = 0;
@@ -3211,7 +3210,13 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
         }
 
         try {
-          if (hasUltra) {
+          if (hasServer) {
+            await axios.post('/api/whatsapp-server/send', {
+              url: server.url,
+              phone: cleanNumber,
+              message: message
+            });
+          } else if (hasUltra) {
             const params = new URLSearchParams();
             params.append('token', ultramsg.token);
             params.append('to', cleanNumber);
@@ -3255,7 +3260,7 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
       }]);
 
       if (successCount > 0) {
-        showNotify(`✅ Campaign sent successfully to ${successCount} contacts!`, "success");
+        showNotify("Campaign sent successfully!", "success");
       }
       
       if (failCount > 0) {
@@ -3747,6 +3752,13 @@ function SettingsView({ profile, onUpdate, onOpenModal, showNotify }: { profile:
     const saved = localStorage.getItem('techtaire_ultramsg_config');
     return saved ? JSON.parse(saved) : { url: '', token: '' };
   });
+  const [serverConfig, setServerConfig] = useState(() => {
+    const saved = localStorage.getItem('techtaire_server_config');
+    return saved ? JSON.parse(saved) : { url: 'https://techtaire-server-production.up.railway.app' };
+  });
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'pending' | 'connected'>('disconnected');
+  const [polling, setPolling] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
@@ -3762,20 +3774,11 @@ function SettingsView({ profile, onUpdate, onOpenModal, showNotify }: { profile:
     setTestingUltra(true);
     setUltraTestResult(null);
     try {
-      // UltraMsg test connection usually involves checking instance status
       const response = await axios.get(`${ultramsgConfig.url}instance/status?token=${ultramsgConfig.token}`);
-      
-      setUltraTestResult({
-        success: true,
-        data: response.data
-      });
+      setUltraTestResult({ success: true, data: response.data });
       showNotify("✅ UltraMsg Connection Test Successful!", "success");
     } catch (e: any) {
-      setUltraTestResult({
-        success: false,
-        error: e.response?.data || e.message,
-        status: e.response?.status
-      });
+      setUltraTestResult({ success: false, error: e.response?.data || e.message, status: e.response?.status });
       showNotify("❌ UltraMsg Connection Test Failed.", "error");
     } finally {
       setTestingUltra(false);
@@ -3785,6 +3788,62 @@ function SettingsView({ profile, onUpdate, onOpenModal, showNotify }: { profile:
   const handleSaveUltra = () => {
     localStorage.setItem('techtaire_ultramsg_config', JSON.stringify(ultramsgConfig));
     showNotify("✅ UltraMsg settings saved successfully!", "success");
+  };
+
+  const checkStatus = async (url: string) => {
+    try {
+      const response = await axios.get(`/api/whatsapp-server/qr?url=${encodeURIComponent(url)}`);
+      if (response.data.status === 'connected') {
+        setConnectionStatus('connected');
+        setQrCode(null);
+        setPolling(false);
+        localStorage.setItem('techtaire_whatsapp_connected', 'true');
+      } else if (response.data.status === 'pending') {
+        setConnectionStatus('pending');
+        setQrCode(response.data.qr);
+        setPolling(true);
+      } else {
+        setConnectionStatus('disconnected');
+        setQrCode(null);
+        setPolling(false);
+        localStorage.removeItem('techtaire_whatsapp_connected');
+      }
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.error || err.message;
+      console.error("Status check failed:", errorMsg);
+      // Don't immediately stop polling on a single network error, maybe retry?
+      // But for now, let's at least show the error clearly in console
+      if (err.message === 'Network Error' || err.response?.status === 500) {
+        // This might be a temporary server issue
+      } else {
+        setConnectionStatus('disconnected');
+        setPolling(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (serverConfig.url) {
+      checkStatus(serverConfig.url);
+    }
+  }, []);
+
+  useEffect(() => {
+    let interval: any;
+    if (polling) {
+      interval = setInterval(() => {
+        checkStatus(serverConfig.url);
+      }, 3000);
+    }
+    return () => clearInterval(interval);
+  }, [polling, serverConfig.url]);
+
+  const handleConnectWhatsApp = () => {
+    localStorage.setItem('techtaire_server_config', JSON.stringify(serverConfig));
+    setConnectionStatus('disconnected');
+    setQrCode(null);
+    setPolling(true);
+    checkStatus(serverConfig.url);
   };
 
   const handleTestConnection = async () => {
@@ -3916,6 +3975,63 @@ function SettingsView({ profile, onUpdate, onOpenModal, showNotify }: { profile:
                 <pre className="text-[10px] font-mono text-soft-lavender/80">
                   {JSON.stringify(testResult.success ? testResult.data : testResult.error, null, 2)}
                 </pre>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="glass-panel p-10 space-y-8">
+        <h3 className="text-xl font-black text-white tracking-tight">WhatsApp Server Configuration</h3>
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Server URL</label>
+            <input 
+              type="text" 
+              value={serverConfig.url}
+              onChange={(e) => setServerConfig({ ...serverConfig, url: e.target.value })}
+              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:border-amethyst transition-all"
+              placeholder="https://your-server.com"
+            />
+          </div>
+          
+          <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/10">
+            <div className="flex items-center gap-3">
+              <div className={cn(
+                "w-3 h-3 rounded-full animate-pulse",
+                connectionStatus === 'connected' ? "bg-emerald-500" : connectionStatus === 'pending' ? "bg-amber-500" : "bg-red-500"
+              )} />
+              <span className="text-sm font-bold text-white uppercase tracking-widest">
+                {connectionStatus === 'connected' ? "Connected" : connectionStatus === 'pending' ? "Connecting..." : "Disconnected"}
+              </span>
+            </div>
+            <button 
+              onClick={handleConnectWhatsApp}
+              disabled={polling || connectionStatus === 'connected'}
+              className="px-6 py-2 bg-royal-purple text-white rounded-xl text-xs font-bold hover:bg-amethyst transition-all disabled:opacity-50"
+            >
+              {polling ? "Polling..." : connectionStatus === 'connected' ? "Connected" : "Connect WhatsApp"}
+            </button>
+          </div>
+
+          {qrCode && (
+            <div className="flex flex-col items-center gap-4 p-6 bg-white rounded-3xl">
+              <p className="text-xs font-black text-deep-night uppercase tracking-widest">Scan QR Code with WhatsApp</p>
+              <img src={qrCode} alt="WhatsApp QR Code" className="w-64 h-64" />
+              <p className="text-[10px] text-deep-night/40 italic text-center">
+                Open WhatsApp &gt; Menu or Settings &gt; Linked Devices &gt; Link a Device
+              </p>
+            </div>
+          )}
+
+          {connectionStatus === 'connected' && (
+            <div className="p-6 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center gap-4">
+              <div className="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center text-white">
+                <Check size={20} />
+              </div>
+              <div>
+                <p className="text-white font-bold">✅ WhatsApp Connected!</p>
+                <p className="text-xs text-soft-lavender/60">Your server is ready to send messages.</p>
               </div>
             </div>
           )}

@@ -405,6 +405,31 @@ async function startServer() {
     res.status(200).send("OK");
   });
 
+  // WhatsApp Server Proxy
+  app.get("/api/whatsapp-server/qr", async (req, res) => {
+    const { url } = req.query;
+    if (!url) return res.status(400).json({ error: "URL is required" });
+    try {
+      const response = await axios.get(`${url}/qr`);
+      res.json(response.data);
+    } catch (error: any) {
+      console.error("WhatsApp Server QR Proxy Error:", error.message);
+      res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
+    }
+  });
+
+  app.post("/api/whatsapp-server/send", async (req, res) => {
+    const { url, phone, message } = req.body;
+    if (!url) return res.status(400).json({ error: "URL is required" });
+    try {
+      const response = await axios.post(`${url}/send`, { phone, message });
+      res.json(response.data);
+    } catch (error: any) {
+      console.error("WhatsApp Server Send Proxy Error:", error.message);
+      res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
+    }
+  });
+
   // WhatsApp API Proxy / Logic
   app.post("/api/whatsapp/send", async (req, res) => {
     const { to, message, apiKey, phoneNumberId, attachmentUrl } = req.body;
