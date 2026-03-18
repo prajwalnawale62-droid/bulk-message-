@@ -423,64 +423,43 @@ async function startServer() {
   });
 
   // WhatsApp Server Proxy
-  app.get("/api/whatsapp-server/qr", async (req, res) => {
-    const { email } = req.query;
-    if (!email) return res.status(400).json({ error: "Email is required" });
-    
-    const targetUrl = `https://techtaire-server-production.up.railway.app/qr?email=${encodeURIComponent(email as string)}`;
-    
+  app.get("/api/whatsapp-server/status", async (req, res) => {
     try {
-      console.log(`Proxying QR request to: ${targetUrl}`);
-      const response = await axios.get(targetUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'application/json,text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8'
-        },
-        timeout: 15000
-      });
-      
-      return res.json(response.data);
+      const email = req.query.email || 'default';
+      const response = await axios.get(
+        `https://techtaire-server-production.up.railway.app/status?email=${encodeURIComponent(email as string)}`,
+        { timeout: 10000 }
+      );
+      res.json(response.data);
     } catch (error: any) {
-      console.error(`QR Proxy failed for ${targetUrl}:`, error.message);
-      res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
+      res.json({ connected: false });
     }
   });
 
-  app.get("/api/whatsapp-server/status", async (req, res) => {
-    const { email } = req.query;
-    if (!email) return res.status(400).json({ error: "Email is required" });
-    
-    const targetUrl = `https://techtaire-server-production.up.railway.app/status?email=${encodeURIComponent(email as string)}`;
-    
+  app.get("/api/whatsapp-server/qr", async (req, res) => {
     try {
-      console.log(`Proxying status request to: ${targetUrl}`);
-      const response = await axios.get(targetUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        },
-        timeout: 10000
-      });
-      return res.json(response.data);
+      const email = req.query.email || 'default';
+      const response = await axios.get(
+        `https://techtaire-server-production.up.railway.app/qr?email=${encodeURIComponent(email as string)}`,
+        { timeout: 15000 }
+      );
+      res.json(response.data);
     } catch (error: any) {
-      console.error(`Status Proxy failed for ${targetUrl}:`, error.message);
-      res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
+      res.json({ status: 'initializing' });
     }
   });
 
   app.post("/api/whatsapp-server/send", async (req, res) => {
-    const { url, phone, message, email } = req.body;
-    if (!email) return res.status(400).json({ error: "Email is required" });
-    
-    const baseUrl = (url || 'https://techtaire-server-production.up.railway.app').replace(/\/$/, "");
-    const targetUrl = `${baseUrl}/send`;
-    
     try {
-      console.log(`Proxying send request to: ${targetUrl}`);
-      const response = await axios.post(targetUrl, { phone, message, email });
+      const { phone, message, email } = req.body;
+      const response = await axios.post(
+        `https://techtaire-server-production.up.railway.app/send`,
+        { phone, message, email },
+        { timeout: 30000 }
+      );
       res.json(response.data);
     } catch (error: any) {
-      console.error("WhatsApp Server Send Proxy Error:", error.message);
-      res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
+      res.status(500).json({ error: error.message });
     }
   });
 
