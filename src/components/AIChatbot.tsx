@@ -10,7 +10,7 @@ interface Message {
   image?: string;
 }
 
-export const AIChatbot = () => {
+export const AIChatbot = ({ user }: { user: any }) => {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<Message[]>([
     { role: 'bot', content: "Hello! I'm your Techtaire AI assistant. Checking WhatsApp connection..." }
@@ -29,7 +29,8 @@ export const AIChatbot = () => {
 
   const checkWhatsAppStatus = async () => {
     try {
-      const res = await fetch('/api/whatsapp-server/status');
+      const serverUrl = '/api/whatsapp-server';
+      const res = await fetch(`${serverUrl}/status?email=${user?.email}`);
       const data = await res.json();
       setIsConnected(data.connected);
       return data.connected;
@@ -42,7 +43,8 @@ export const AIChatbot = () => {
 
   const fetchWhatsAppQR = async () => {
     try {
-      const res = await fetch('/api/whatsapp-server/qr');
+      const serverUrl = '/api/whatsapp-server';
+      const res = await fetch(`${serverUrl}/qr?email=${user?.email}`);
       const data = await res.json();
       if (data.qr) {
         const qrData = data.qr.startsWith('data:') ? data.qr : `data:image/png;base64,${data.qr}`;
@@ -146,7 +148,7 @@ export const AIChatbot = () => {
       
       TOOLS AVAILABLE
       You can make HTTP requests to this server:
-      Base URL: https://techtaire-server-production-ad0b.up.railway.app
+      Base URL: /api/whatsapp-server
       
       Endpoints:
       - GET /status → { connected: true/false }
@@ -212,10 +214,11 @@ export const AIChatbot = () => {
               });
             } else {
               try {
-                const res = await fetch('/api/whatsapp-server/send', {
+                const serverUrl = '/api/whatsapp-server';
+                const res = await fetch(`${serverUrl}/send`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ phone, message })
+                  body: JSON.stringify({ phone, message, email: user?.email })
                 });
                 const data = await res.json();
                 functionResponses.push({
@@ -225,7 +228,7 @@ export const AIChatbot = () => {
               } catch (err) {
                 functionResponses.push({
                   name: "sendWhatsAppMessage",
-                  response: { error: "Failed to send message via proxy." }
+                  response: { error: "Failed to send message." }
                 });
               }
             }
@@ -239,10 +242,11 @@ export const AIChatbot = () => {
               });
             } else {
               try {
-                const res = await fetch('/api/whatsapp-server/bulk-send', {
+                const serverUrl = '/api/whatsapp-server';
+                const res = await fetch(`${serverUrl}/bulk-send`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ phones, message })
+                  body: JSON.stringify({ phones, message, email: user?.email })
                 });
                 const data = await res.json();
                 functionResponses.push({
@@ -252,7 +256,7 @@ export const AIChatbot = () => {
               } catch (err) {
                 functionResponses.push({
                   name: "sendBulkWhatsAppMessages",
-                  response: { error: "Failed to send bulk messages via proxy." }
+                  response: { error: "Failed to send bulk messages." }
                 });
               }
             }

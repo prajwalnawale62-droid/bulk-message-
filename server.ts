@@ -139,6 +139,76 @@ async function startServer() {
     }
   });
 
+  // --- WhatsApp API Routes ---
+  app.post("/api/whatsapp/send", async (req, res) => {
+    const { to, message, apiKey, phoneNumberId, attachmentUrl } = req.body;
+
+    if (!apiKey || !phoneNumberId) {
+      return res.status(400).json({ error: "WhatsApp API credentials missing" });
+    }
+
+    try {
+      let data: any = {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: to,
+      };
+
+      if (attachmentUrl) {
+        // If there's an attachment, we use a template or media message
+        // For simplicity, let's assume it's an image if attachmentUrl is present
+        data.type = "image";
+        data.image = {
+          link: attachmentUrl,
+          caption: message
+        };
+      } else {
+        data.type = "text";
+        data.text = { body: message };
+      }
+
+      const response = await axios.post(
+        `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
+        data,
+        {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      res.json(response.data);
+    } catch (error: any) {
+      console.error("WhatsApp API Error:", error.response?.data || error.message);
+      res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
+    }
+  });
+
+  // --- WhatsApp Railway Server Proxy ---
+  app.all("/api/whatsapp-server/:path(*)", async (req, res) => {
+    const path = req.params.path;
+    const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
+    const url = `${serverUrl}/${path}`;
+    
+    try {
+      const response = await axios({
+        method: req.method,
+        url: url,
+        data: req.body,
+        params: req.query,
+        headers: {
+          ...req.headers,
+          host: 'techtaire-server-production-ad0b.up.railway.app'
+        }
+      });
+      res.status(response.status).json(response.data);
+    } catch (error: any) {
+      console.error(`Railway Server Proxy Error (${path}):`, error.response?.data || error.message);
+      res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
+    }
+  });
+
   // --- Admin Routes ---
   app.get("/api/admin/stats", async (req, res) => {
     const supabaseAdmin = getSupabaseAdmin();
@@ -407,159 +477,6 @@ async function startServer() {
     // Handle server-to-server callback from PhonePe
     console.log("PhonePe Callback:", req.body);
     res.status(200).send("OK");
-  });
-
-  app.get("/qr/:email", (req, res) => {
-    const email = req.params.email;
-    // Mocking the QR code HTML as requested
-    // In a real scenario with whatsapp-web.js, this would return the actual QR code
-    const qrImage = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=whatsapp-connection-${email}-${Date.now()}`;
-    res.send(`
-      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: white; padding: 20px; border-radius: 16px;">
-        <img src="${qrImage}" alt="WhatsApp QR Code" style="width: 200px; height: 200px;" />
-        <p style="color: #333; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Scan with WhatsApp</p>
-      </div>
-    `);
-  });
-
-  // WhatsApp Server Proxy
-  app.get("/api/whatsapp-server/status", async (req, res) => {
-    try {
-      const email = req.query.email || 'default';
-      const response = await axios.get(
-        `https://techtaire-server-production-ad0b.up.railway.app/status?email=${encodeURIComponent(email as string)}`,
-        { timeout: 10000 }
-      );
-      res.setHeader('Content-Type', 'application/json');
-      res.json(response.data);
-    } catch (error: any) {
-      res.setHeader('Content-Type', 'application/json');
-      res.json({ connected: false });
-    }
-  });
-
-  app.get("/api/whatsapp-server/qr", async (req, res) => {
-    try {
-      const email = req.query.email || 'default';
-      const response = await axios.get(
-        `https://techtaire-server-production-ad0b.up.railway.app/qr?email=${encodeURIComponent(email as string)}`,
-        { timeout: 15000 }
-      );
-      res.setHeader('Content-Type', 'application/json');
-      res.json(response.data);
-    } catch (error: any) {
-      res.setHeader('Content-Type', 'application/json');
-      res.json({ status: 'initializing' });
-    }
-  });
-
-  app.post("/api/whatsapp-server/send", async (req, res) => {
-    try {
-      const { phone, message, email } = req.body;
-      const response = await axios.post(
-        `https://techtaire-server-production-ad0b.up.railway.app/send`,
-        { phone, message, email },
-        { timeout: 30000 }
-      );
-      res.json(response.data);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.post("/api/whatsapp-server/bulk-send", async (req, res) => {
-    try {
-      const { phones, message, email } = req.body;
-      const response = await axios.post(
-        `https://techtaire-server-production-ad0b.up.railway.app/bulk-send`,
-        { phones, message, email },
-        { timeout: 60000 }
-      );
-      res.json(response.data);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // WhatsApp API Proxy / Logic
-  app.post("/api/whatsapp/send", async (req, res) => {
-    const { to, message, apiKey, phoneNumberId, attachmentUrl } = req.body;
-    
-    // Use provided credentials or fallback to environment variables
-    const WHATSAPP_TOKEN = apiKey || process.env.WHATSAPP_ACCESS_TOKEN;
-    const PHONE_NUMBER_ID = phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID;
-
-    if (!WHATSAPP_TOKEN || !PHONE_NUMBER_ID) {
-      return res.status(500).json({ error: "WhatsApp API not configured" });
-    }
-
-    try {
-      let data: any = {
-        messaging_product: "whatsapp",
-        to,
-      };
-
-      if (attachmentUrl) {
-        // If it's a data URL, we'd normally need to upload it to Meta first.
-        // For this demo, we'll assume it's a direct link or handle text only if it's too large.
-        // Real implementation would use the Media API.
-        const isImage = attachmentUrl.startsWith('data:image');
-        const isVideo = attachmentUrl.startsWith('data:video');
-        
-        if (isImage || isVideo) {
-          data.type = isImage ? "image" : "video";
-          data[data.type] = {
-            link: attachmentUrl.startsWith('data:') ? "https://picsum.photos/800/600" : attachmentUrl, // Fallback for data URLs in demo
-            caption: message
-          };
-        } else {
-          data.type = "text";
-          data.text = { body: message };
-        }
-      } else {
-        data.type = "text";
-        data.text = { body: message };
-      }
-
-      console.log(`Sending WhatsApp message to ${to} using Phone Number ID ${PHONE_NUMBER_ID}`);
-      console.log(`Payload:`, JSON.stringify(data, null, 2));
-      
-      let response;
-      const urlV17 = `https://graph.facebook.com/v17.0/${PHONE_NUMBER_ID}/messages`;
-      const urlV16 = `https://graph.facebook.com/v16.0/${PHONE_NUMBER_ID}/messages`;
-
-      try {
-        console.log(`Full URL (v17.0): ${urlV17}`);
-        response = await axios.post(urlV17, data, {
-          headers: {
-            Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-            "Content-Type": "application/json",
-          },
-        });
-      } catch (v17Error: any) {
-        console.error(`v17.0 failed with status ${v17Error.response?.status}. Error: ${v17Error.response?.data?.error?.message || v17Error.message}`);
-        
-        if (v17Error.response?.status === 404 || v17Error.response?.status === 400) {
-          console.log(`Attempting fallback to v16.0...`);
-          console.log(`Full URL (v16.0): ${urlV16}`);
-          response = await axios.post(urlV16, data, {
-            headers: {
-              Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-              "Content-Type": "application/json",
-            },
-          });
-        } else {
-          throw v17Error;
-        }
-      }
-
-      console.log(`WhatsApp message sent successfully to ${to}`);
-      res.json(response.data);
-    } catch (error: any) {
-      const errorData = error.response?.data || { error: "Failed to send message" };
-      console.error("WhatsApp Send Error:", JSON.stringify(errorData, null, 2));
-      res.status(error.response?.status || 500).json(errorData);
-    }
   });
 
   // AI Template Generation
