@@ -427,7 +427,7 @@ async function startServer() {
     try {
       const email = req.query.email || 'default';
       const response = await axios.get(
-        `https://techtaire-server-production.up.railway.app/status?email=${encodeURIComponent(email as string)}`,
+        `https://techtaire-server-production-ad0b.up.railway.app/status?email=${encodeURIComponent(email as string)}`,
         { timeout: 10000 }
       );
       res.setHeader('Content-Type', 'application/json');
@@ -441,59 +441,15 @@ async function startServer() {
   app.get("/api/whatsapp-server/qr", async (req, res) => {
     try {
       const email = req.query.email || 'default';
-      // Use arraybuffer to handle potential binary image data
       const response = await axios.get(
-        `https://techtaire-server-production.up.railway.app/qr?email=${encodeURIComponent(email as string)}`,
-        { 
-          timeout: 20000,
-          responseType: 'arraybuffer' 
-        }
+        `https://techtaire-server-production-ad0b.up.railway.app/qr?email=${encodeURIComponent(email as string)}`,
+        { timeout: 15000 }
       );
-      
-      const contentType = response.headers['content-type'] || '';
       res.setHeader('Content-Type', 'application/json');
-      
-      // If the response is an image, convert to base64 data URL
-      if (contentType.includes('image')) {
-        const base64 = Buffer.from(response.data).toString('base64');
-        return res.json({ qr: `data:${contentType};base64,${base64}` });
-      }
-      
-      // Otherwise, treat as text (JSON or HTML/Base64 string)
-      const dataString = Buffer.from(response.data).toString('utf-8');
-      
-      try {
-        // Try parsing as JSON
-        const jsonData = JSON.parse(dataString);
-        
-        // If it's an object with qr/html, return as is
-        if (jsonData && typeof jsonData === 'object') {
-          if (jsonData.qr || jsonData.html) {
-            return res.json(jsonData);
-          }
-          // If it's a raw string inside JSON
-          if (typeof jsonData === 'string') {
-            return res.json({ qr: jsonData });
-          }
-        }
-        return res.json(jsonData);
-      } catch (e) {
-        // Not JSON, handle as raw string (HTML or Base64)
-        const trimmed = dataString.trim();
-        if (trimmed.startsWith('<')) {
-          return res.json({ html: trimmed });
-        }
-        // Assume it's a raw base64 string
-        return res.json({ qr: trimmed });
-      }
+      res.json(response.data);
     } catch (error: any) {
-      console.error('WhatsApp QR Proxy Error:', error.message);
       res.setHeader('Content-Type', 'application/json');
-      res.status(200).json({ 
-        status: 'initializing', 
-        message: 'Server is preparing your QR code...',
-        error: error.message 
-      });
+      res.json({ status: 'initializing' });
     }
   });
 
@@ -501,7 +457,7 @@ async function startServer() {
     try {
       const { phone, message, email } = req.body;
       const response = await axios.post(
-        `https://techtaire-server-production.up.railway.app/send`,
+        `https://techtaire-server-production-ad0b.up.railway.app/send`,
         { phone, message, email },
         { timeout: 30000 }
       );

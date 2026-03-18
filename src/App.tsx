@@ -3125,7 +3125,7 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
 
     const serverSaved = localStorage.getItem('techtaire_server_config');
     const isConnected = localStorage.getItem('techtaire_whatsapp_connected') === 'true';
-    const server = serverSaved ? JSON.parse(serverSaved) : { url: 'https://techtaire-server-production.up.railway.app' };
+    const server = serverSaved ? JSON.parse(serverSaved) : { url: 'https://techtaire-server-production-ad0b.up.railway.app' };
     const hasServer = server && server.url && isConnected;
 
     if (!hasServer && !hasUltra && (!profile.whatsapp_api_key || !profile.whatsapp_phone_number_id)) {
@@ -3226,14 +3226,10 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
 
         try {
           if (hasServer) {
-            await fetch('/api/whatsapp-server/send', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                phone: cleanNumber,
-                message: message,
-                email: user.email
-              })
+            await axios.post('/api/whatsapp-server/send', {
+              phone: cleanNumber,
+              message: message,
+              email: user.email
             });
           } else if (hasUltra) {
             const params = new URLSearchParams();
@@ -3771,14 +3767,8 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
     const saved = localStorage.getItem('techtaire_ultramsg_config');
     return saved ? JSON.parse(saved) : { url: '', token: '' };
   });
-  const [serverConfig, setServerConfig] = useState(() => {
-    const saved = localStorage.getItem('techtaire_server_config');
-    const parsed = saved ? JSON.parse(saved) : null;
-    // Force Railway URL if it's currently localhost or empty
-    if (!parsed?.url || parsed.url.includes('localhost')) {
-      return { url: 'https://techtaire-server-production.up.railway.app' };
-    }
-    return parsed;
+  const [serverConfig, setServerConfig] = useState({ 
+    url: 'https://techtaire-server-production-ad0b.up.railway.app' 
   });
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [qrHtml, setQrHtml] = useState<string | null>(null);
@@ -3816,23 +3806,36 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
     showNotify("✅ UltraMsg settings saved successfully!", "success");
   };
 
-  const checkStatus = async () => {
-    if (!user?.email) return;
+  const checkStatus = async (url: string) => {
     try {
-      const res = await fetch(`/api/whatsapp-server/status?email=${encodeURIComponent(user.email)}`);
-      const data = await res.json();
-      if (data.connected === true) {
+      const response = await axios.get(
+        `/api/whatsapp-server/status?email=${encodeURIComponent(user.email)}`,
+        { timeout: 10000 }
+      );
+      if (response.data.connected === true) {
         setConnectionStatus('connected');
         setPolling(false);
         setQrCode(null);
+        setQrHtml(null);
         localStorage.setItem('techtaire_whatsapp_connected', 'true');
       } else {
         setConnectionStatus('waiting');
+        setPolling(true);
         localStorage.setItem('techtaire_whatsapp_connected', 'false');
-        // Don't call fetchQRCode here to avoid double polling
+        const qrResponse = await axios.get(
+          `/api/whatsapp-server/qr?email=${encodeURIComponent(user.email)}`,
+          { timeout: 15000 }
+        );
+        if (qrResponse.data.qr) {
+          setQrCode(qrResponse.data.qr);
+          setQrHtml(null);
+        }
       }
     } catch (err) {
       setConnectionStatus('disconnected');
+      localStorage.setItem('techtaire_whatsapp_connected', 'false');
+    } finally {
+      setQrLoading(false);
     }
   };
 
@@ -3861,8 +3864,8 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
     let qrInterval: any;
 
     if (polling && connectionStatus !== 'connected') {
-      checkStatus();
-      statusInterval = setInterval(checkStatus, 5000);
+      checkStatus('');
+      statusInterval = setInterval(() => checkStatus(''), 5000);
       
       fetchQRCode();
       qrInterval = setInterval(fetchQRCode, 10000); // Reduced to 10s for faster updates
@@ -3878,9 +3881,9 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
     setConnectionStatus('waiting');
     setQrCode(null);
     setQrHtml(null);
-    setQrLoading(true);
     setPolling(true);
-    checkStatus().finally(() => setQrLoading(false));
+    setQrLoading(true);
+    checkStatus('');
   };
 
   const handleTestConnection = async () => {
@@ -4025,7 +4028,7 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
             <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Server URL</label>
             <input 
               type="text" 
-              value="https://techtaire-server-production.up.railway.app"
+              value="https://techtaire-server-production-ad0b.up.railway.app"
               readOnly
               className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-soft-lavender/40 cursor-not-allowed outline-none transition-all"
               placeholder="https://your-server.com"
@@ -4270,14 +4273,16 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
   const [whatsappStatus, setWhatsappStatus] = useState<'disconnected' | 'waiting' | 'connected'>('disconnected');
 
   const checkWhatsAppStatus = async () => {
-    if (!user?.email) return;
     try {
-      const res = await fetch(`/api/whatsapp-server/status?email=${encodeURIComponent(user.email)}`);
-      const data = await res.json();
-      if (data.connected === true) {
+      const response = await axios.get(
+        `/api/whatsapp-server/status?email=${encodeURIComponent(user.email)}`,
+        { timeout: 10000 }
+      );
+      if (response.data.connected === true) {
         setWhatsappStatus('connected');
         setIsConnecting(false);
         setQrCode(null);
+        setQrHtml(null);
         localStorage.setItem('techtaire_whatsapp_connected', 'true');
       } else {
         setWhatsappStatus('disconnected');
@@ -4289,19 +4294,14 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
   };
 
   const fetchQR = async () => {
-    if (!user?.email) return;
     try {
-      const res = await fetch(`/api/whatsapp-server/qr?email=${encodeURIComponent(user.email)}`);
-      const data = await res.json();
-      console.log('Dashboard QR Fetch Response:', data);
-      
-      if (data.qr) {
-        const qrData = data.qr.startsWith('data:') ? data.qr : `data:image/png;base64,${data.qr}`;
-        setQrCode(qrData);
+      const response = await axios.get(
+        `/api/whatsapp-server/qr?email=${encodeURIComponent(user.email)}`,
+        { timeout: 15000 }
+      );
+      if (response.data.qr) {
+        setQrCode(response.data.qr);
         setQrHtml(null);
-      } else if (data.html) {
-        setQrHtml(data.html);
-        setQrCode(null);
       }
     } catch (err) {
       console.error('QR fetch failed');
