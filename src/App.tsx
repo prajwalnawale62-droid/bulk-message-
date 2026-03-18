@@ -3226,10 +3226,10 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
 
         try {
           if (hasServer) {
-            await axios.post('/api/whatsapp-server/send', {
+            await axios.post(`/api/whatsapp-server/send`, {
               phone: cleanNumber,
               message: message,
-              email: user.email
+              email: user?.email
             });
           } else if (hasUltra) {
             const params = new URLSearchParams();
@@ -3808,30 +3808,24 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
 
   const checkStatus = async (url: string) => {
     try {
-      const response = await axios.get(
-        `/api/whatsapp-server/status?email=${encodeURIComponent(user.email)}`,
-        { timeout: 10000 }
-      );
+      const response = await axios.get(`/api/whatsapp-server/status?email=${encodeURIComponent(user?.email || 'default')}`);
       if (response.data.connected === true) {
         setConnectionStatus('connected');
         setPolling(false);
-        setQrCode(null);
         setQrHtml(null);
+        setQrCode(null);
         localStorage.setItem('techtaire_whatsapp_connected', 'true');
       } else {
         setConnectionStatus('waiting');
         setPolling(true);
         localStorage.setItem('techtaire_whatsapp_connected', 'false');
-        const qrResponse = await axios.get(
-          `/api/whatsapp-server/qr?email=${encodeURIComponent(user.email)}`,
-          { timeout: 15000 }
-        );
+        const qrResponse = await axios.get(`/api/whatsapp-server/qr?email=${encodeURIComponent(user?.email || 'default')}`);
         if (qrResponse.data.qr) {
           setQrCode(qrResponse.data.qr);
           setQrHtml(null);
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       setConnectionStatus('disconnected');
       localStorage.setItem('techtaire_whatsapp_connected', 'false');
     } finally {
@@ -3840,9 +3834,8 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
   };
 
   const fetchQRCode = async () => {
-    if (!user?.email) return;
     try {
-      const res = await fetch(`/api/whatsapp-server/qr?email=${encodeURIComponent(user.email)}`);
+      const res = await fetch(`/api/whatsapp-server/qr?email=${encodeURIComponent(user?.email || 'default')}`);
       const data = await res.json();
       console.log('QR Fetch Response:', data);
       
@@ -3878,12 +3871,14 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
   }, [polling, connectionStatus, user?.email]);
 
   const handleConnectWhatsApp = () => {
+    const url = 'https://techtaire-server-production-ad0b.up.railway.app';
+    localStorage.setItem('techtaire_server_config', JSON.stringify({ url }));
     setConnectionStatus('waiting');
     setQrCode(null);
     setQrHtml(null);
     setPolling(true);
     setQrLoading(true);
-    checkStatus('');
+    checkStatus(url);
   };
 
   const handleTestConnection = async () => {
@@ -4274,37 +4269,32 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
 
   const checkWhatsAppStatus = async () => {
     try {
-      const response = await axios.get(
-        `/api/whatsapp-server/status?email=${encodeURIComponent(user.email)}`,
-        { timeout: 10000 }
-      );
+      const response = await axios.get(`/api/whatsapp-server/status?email=${encodeURIComponent(user?.email || 'default')}`);
       if (response.data.connected === true) {
         setWhatsappStatus('connected');
         setIsConnecting(false);
-        setQrCode(null);
         setQrHtml(null);
+        setQrCode(null);
         localStorage.setItem('techtaire_whatsapp_connected', 'true');
       } else {
-        setWhatsappStatus('disconnected');
+        setWhatsappStatus('waiting');
         localStorage.setItem('techtaire_whatsapp_connected', 'false');
       }
     } catch (err) {
       setWhatsappStatus('disconnected');
+      localStorage.setItem('techtaire_whatsapp_connected', 'false');
     }
   };
 
   const fetchQR = async () => {
     try {
-      const response = await axios.get(
-        `/api/whatsapp-server/qr?email=${encodeURIComponent(user.email)}`,
-        { timeout: 15000 }
-      );
+      const response = await axios.get(`/api/whatsapp-server/qr?email=${encodeURIComponent(user?.email || 'default')}`);
       if (response.data.qr) {
         setQrCode(response.data.qr);
         setQrHtml(null);
       }
     } catch (err) {
-      console.error('QR fetch failed');
+      console.error("Failed to fetch QR", err);
     }
   };
 

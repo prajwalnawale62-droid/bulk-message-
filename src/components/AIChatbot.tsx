@@ -64,7 +64,7 @@ export const AIChatbot = () => {
     if (connected) {
       setChatMessages(prev => [
         ...prev,
-        { role: 'bot', content: "✅ WhatsApp Connected and Ready!" }
+        { role: 'bot', content: "✅ WhatsApp Connected! Ready to send messages." }
       ]);
     } else {
       const qr = await fetchWhatsAppQR();
@@ -115,7 +115,7 @@ export const AIChatbot = () => {
               parameters: {
                 type: Type.OBJECT,
                 properties: {
-                  phone: { type: Type.STRING, description: "The recipient's phone number in international format (e.g., 919876543210)." },
+                  phone: { type: Type.STRING, description: "The recipient's phone number with country code (e.g., 919876543210), no spaces or symbols." },
                   message: { type: Type.STRING, description: "The message content to send." }
                 },
                 required: ["phone", "message"]
@@ -130,7 +130,7 @@ export const AIChatbot = () => {
                   phones: { 
                     type: Type.ARRAY, 
                     items: { type: Type.STRING },
-                    description: "An array of recipient phone numbers." 
+                    description: "An array of recipient phone numbers with country code (e.g., ['919876543210', '919551522030'])." 
                   },
                   message: { type: Type.STRING, description: "The message content to send to all recipients." }
                 },
@@ -142,16 +142,37 @@ export const AIChatbot = () => {
       ];
 
       const model = "gemini-3-flash-preview";
-      const systemInstruction = `You are a WhatsApp automation assistant connected to a live WhatsApp server.
+      const systemInstruction = `You are a WhatsApp automation assistant.
       
-      Server Base URL: https://techtaire-server-production-ad0b.up.railway.app
+      TOOLS AVAILABLE
+      You can make HTTP requests to this server:
+      Base URL: https://techtaire-server-production-ad0b.up.railway.app
+      
+      Endpoints:
+      - GET /status → { connected: true/false }
+      - GET /qr → { status: "pending", qr: "data:image/png;base64,..." } OR { status: "connected" }
+      - POST /send → body: { phone: "919876543210", message: "text" } → { success: true }
+      - POST /bulk-send → body: { phones: ["91...","91..."], message: "text" } → { success: true, sent: N, total: N }
+      
+      STARTUP BEHAVIOR (MOST IMPORTANT)
+      As soon as conversation starts:
+      1. Call GET /status
+      2. If connected = false → Call GET /qr → Display the base64 QR image inline to user
+      3. If connected = true → Say "✅ WhatsApp Connected! Ready to send messages."
+      4. Keep auto-checking every response until connected
       
       RULES:
-      - Always verify connection before sending any message using checkStatus.
-      - If disconnected (connected = false), inform the user and ask them to scan the QR code (which will be automatically displayed if you return a message about disconnection).
-      - Never proceed with sending if connected = false.
-      - Keep responses concise, professional, and helpful.
-      - You can send single or bulk messages.
+      - ALWAYS check connection before sending any message using checkStatus.
+      - If user says "send message to 9876543210 saying Hello" → call sendWhatsAppMessage with phone and message.
+      - If user says "bulk send" → call sendBulkWhatsAppMessages with phones array and message.
+      - Phone numbers must include country code (91 for India), no spaces or symbols.
+      - If disconnected mid-session (connected = false), fetch QR again and show it.
+      - Display QR as image, not as text.
+      
+      BEHAVIOR:
+      - Be concise, action-first.
+      - After every send, confirm ✅ or ❌ with details.
+      - Log what you did.
       
       Current WhatsApp Connection Status: ${connected ? 'Connected' : 'Disconnected'}`;
 
