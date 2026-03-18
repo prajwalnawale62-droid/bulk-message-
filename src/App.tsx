@@ -3226,10 +3226,14 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
 
         try {
           if (hasServer) {
-            await axios.post('/api/whatsapp-server/send', {
-              phone: cleanNumber,
-              message: message,
-              email: user.email
+            await fetch('/api/whatsapp-server/send', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                phone: cleanNumber,
+                message: message,
+                email: user.email
+              })
             });
           } else if (hasUltra) {
             const params = new URLSearchParams();
@@ -3812,62 +3816,53 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
     showNotify("✅ UltraMsg settings saved successfully!", "success");
   };
 
-  const checkStatus = async (url: string) => {
+  const checkStatus = async () => {
     try {
-      const response = await axios.get(
-        `/api/whatsapp-server/status?email=${encodeURIComponent(user.email)}`,
-        { timeout: 10000 }
-      );
-      if (response.data.connected === true) {
+      const res = await fetch(`/api/whatsapp-server/status?email=${encodeURIComponent(user.email)}`);
+      const data = await res.json();
+      if (data.connected === true) {
         setConnectionStatus('connected');
         setPolling(false);
         setQrCode(null);
-        setQrHtml(null);
         localStorage.setItem('techtaire_whatsapp_connected', 'true');
       } else {
         setConnectionStatus('waiting');
-        setPolling(true);
         localStorage.setItem('techtaire_whatsapp_connected', 'false');
-        const qrResponse = await axios.get(
-          `/api/whatsapp-server/qr?email=${encodeURIComponent(user.email)}`,
-          { timeout: 15000 }
-        );
-        if (qrResponse.data.qr) {
-          setQrCode(qrResponse.data.qr);
-          setQrHtml(null);
-        }
+        fetchQRCode();
       }
     } catch (err) {
       setConnectionStatus('disconnected');
-      localStorage.setItem('techtaire_whatsapp_connected', 'false');
-    } finally {
-      setQrLoading(false);
+    }
+  };
+
+  const fetchQRCode = async () => {
+    try {
+      const res = await fetch(`/api/whatsapp-server/qr?email=${encodeURIComponent(user.email)}`);
+      const data = await res.json();
+      if (data.qr) {
+        setQrCode(data.qr);
+      }
+    } catch (err) {
+      console.error('QR fetch error:', err);
     }
   };
 
   useEffect(() => {
-    if (serverConfig.url) {
-      checkStatus(serverConfig.url);
-    }
-  }, []);
-
-  useEffect(() => {
     let interval: any;
-    if (polling) {
+    if (polling && connectionStatus !== 'connected') {
+      checkStatus();
       interval = setInterval(() => {
-        checkStatus(serverConfig.url);
-      }, 20000);
+        checkStatus();
+      }, 5000);
     }
     return () => clearInterval(interval);
-  }, [polling, serverConfig.url]);
+  }, [polling, connectionStatus]);
 
   const handleConnectWhatsApp = () => {
     setConnectionStatus('waiting');
     setQrCode(null);
-    setQrHtml(null);
     setPolling(true);
-    setQrLoading(true);
-    checkStatus('');
+    checkStatus();
   };
 
   const handleTestConnection = async () => {
@@ -4059,11 +4054,19 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
           )}
 
           {qrCode && (
-            <div className="flex flex-col items-center gap-4 p-6 bg-white rounded-3xl shadow-2xl">
-              <p className="text-xs font-black text-deep-night uppercase tracking-widest">Scan QR Code with WhatsApp</p>
-              <img src={qrCode} alt="WhatsApp QR Code" style={{ width: '280px', height: '280px' }} className="object-contain" />
-              <p className="text-[10px] text-deep-night/40 italic text-center">
-                Open WhatsApp &gt; Menu or Settings &gt; Linked Devices &gt; Link a Device
+            <div style={{background:'white', padding:'16px', borderRadius:'12px', display:'inline-block'}}>
+              <p style={{color:'black', textAlign:'center', fontWeight:'bold', marginBottom:'8px'}}>
+                📱 Scan QR Code with WhatsApp
+              </p>
+              <img 
+                src={qrCode} 
+                alt="WhatsApp QR Code" 
+                width={280} 
+                height={280}
+                style={{display:'block'}}
+              />
+              <p style={{color:'gray', textAlign:'center', fontSize:'10px', marginTop:'8px'}}>
+                Open WhatsApp → Linked Devices → Link a Device
               </p>
             </div>
           )}
@@ -4247,15 +4250,12 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
 
   const checkWhatsAppStatus = async () => {
     try {
-      const response = await axios.get(
-        `/api/whatsapp-server/status?email=${encodeURIComponent(user.email)}`,
-        { timeout: 10000 }
-      );
-      if (response.data.connected === true) {
+      const res = await fetch(`/api/whatsapp-server/status?email=${encodeURIComponent(user.email)}`);
+      const data = await res.json();
+      if (data.connected === true) {
         setWhatsappStatus('connected');
         setIsConnecting(false);
         setQrCode(null);
-        setQrHtml(null);
         localStorage.setItem('techtaire_whatsapp_connected', 'true');
       } else {
         setWhatsappStatus('disconnected');
@@ -4268,12 +4268,10 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
 
   const fetchQR = async () => {
     try {
-      const response = await axios.get(
-        `/api/whatsapp-server/qr?email=${encodeURIComponent(user.email)}`,
-        { timeout: 15000 }
-      );
-      if (response.data.qr) {
-        setQrCode(response.data.qr);
+      const res = await fetch(`/api/whatsapp-server/qr?email=${encodeURIComponent(user.email)}`);
+      const data = await res.json();
+      if (data.qr) {
+        setQrCode(data.qr);
         setQrHtml(null);
       }
     } catch (err) {

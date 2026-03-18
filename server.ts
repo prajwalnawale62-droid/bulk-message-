@@ -430,8 +430,10 @@ async function startServer() {
         `https://techtaire-server-production.up.railway.app/status?email=${encodeURIComponent(email as string)}`,
         { timeout: 10000 }
       );
+      res.setHeader('Content-Type', 'application/json');
       res.json(response.data);
     } catch (error: any) {
+      res.setHeader('Content-Type', 'application/json');
       res.json({ connected: false });
     }
   });
@@ -443,8 +445,10 @@ async function startServer() {
         `https://techtaire-server-production.up.railway.app/qr?email=${encodeURIComponent(email as string)}`,
         { timeout: 15000 }
       );
+      res.setHeader('Content-Type', 'application/json');
       res.json(response.data);
     } catch (error: any) {
+      res.setHeader('Content-Type', 'application/json');
       res.json({ status: 'initializing' });
     }
   });
