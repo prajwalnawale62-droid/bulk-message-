@@ -30,7 +30,7 @@ export const AIChatbot = ({ user }: { user: any }) => {
   const checkWhatsAppStatus = async () => {
     try {
       const serverUrl = '/api/whatsapp-server';
-      const res = await fetch(`${serverUrl}/status?email=${user?.email}`);
+      const res = await fetch(`${serverUrl}/status?email=${user?.email}&t=${Date.now()}`);
       const data = await res.json();
       setIsConnected(data.connected);
       return data.connected;
@@ -44,7 +44,7 @@ export const AIChatbot = ({ user }: { user: any }) => {
   const fetchWhatsAppQR = async () => {
     try {
       const serverUrl = '/api/whatsapp-server';
-      const res = await fetch(`${serverUrl}/qr?email=${user?.email}`);
+      const res = await fetch(`${serverUrl}/qr?email=${user?.email}&t=${Date.now()}`);
       const data = await res.json();
       if (data.qr) {
         const qrData = data.qr.startsWith('data:') ? data.qr : `data:image/png;base64,${data.qr}`;
@@ -148,7 +148,7 @@ export const AIChatbot = ({ user }: { user: any }) => {
       
       TOOLS AVAILABLE
       You can make HTTP requests to this server:
-      Base URL: /api/whatsapp-server
+      Base URL: https://techtaire-server-production-ad0b.up.railway.app
       
       Endpoints:
       - GET /status → { connected: true/false }

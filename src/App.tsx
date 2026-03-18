@@ -3767,7 +3767,7 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
     return saved ? JSON.parse(saved) : { url: '', token: '' };
   });
   const [serverConfig, setServerConfig] = useState({ 
-    url: '/api/whatsapp-server' 
+    url: 'https://techtaire-server-production-ad0b.up.railway.app' 
   });
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [qrHtml, setQrHtml] = useState<string | null>(null);
@@ -3808,7 +3808,9 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
 const checkStatus = async (url: string) => {
   try {
     const serverUrl = '/api/whatsapp-server';
-    const response = await axios.get(`${serverUrl}/status?email=${user?.email}`);
+    const response = await axios.get(`${serverUrl}/status?email=${user?.email}&t=${Date.now()}`, {
+      validateStatus: (status) => status < 400
+    });
     if (response.data.connected === true) {
       setConnectionStatus('connected');
       setPolling(false);
@@ -3819,9 +3821,12 @@ const checkStatus = async (url: string) => {
       setConnectionStatus('waiting');
       setPolling(true);
       localStorage.setItem('techtaire_whatsapp_connected', 'false');
-      const qrResponse = await axios.get(`${serverUrl}/qr?email=${user?.email}`);
+      const qrResponse = await axios.get(`${serverUrl}/qr?email=${user?.email}&t=${Date.now()}`, {
+        validateStatus: (status) => status < 400
+      });
       if (qrResponse.data.qr) {
-        setQrCode(qrResponse.data.qr);
+        const qrData = qrResponse.data.qr.startsWith('data:') ? qrResponse.data.qr : `data:image/png;base64,${qrResponse.data.qr}`;
+        setQrCode(qrData);
         setQrHtml(null);
       }
     }
@@ -4024,7 +4029,7 @@ const handleConnectWhatsApp = () => {
             <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Server URL</label>
             <input 
               type="text" 
-              value="/api/whatsapp-server"
+              value="https://techtaire-server-production-ad0b.up.railway.app"
               readOnly
               className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-soft-lavender/40 cursor-not-allowed outline-none transition-all"
               placeholder="https://your-server.com"
@@ -4271,7 +4276,9 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
 const checkWhatsAppStatus = async () => {
   try {
     const serverUrl = '/api/whatsapp-server';
-    const response = await axios.get(`${serverUrl}/status?email=${user?.email}`);
+    const response = await axios.get(`${serverUrl}/status?email=${user?.email}&t=${Date.now()}`, {
+      validateStatus: (status) => status < 400
+    });
     if (response.data.connected === true) {
       setWhatsappStatus('connected');
       setIsConnecting(false);
@@ -4291,9 +4298,12 @@ const checkWhatsAppStatus = async () => {
 const fetchQR = async () => {
   try {
     const serverUrl = '/api/whatsapp-server';
-    const response = await axios.get(`${serverUrl}/qr?email=${user?.email}`);
+    const response = await axios.get(`${serverUrl}/qr?email=${user?.email}&t=${Date.now()}`, {
+      validateStatus: (status) => status < 400
+    });
     if (response.data.qr) {
-      setQrCode(response.data.qr);
+      const qrData = response.data.qr.startsWith('data:') ? response.data.qr : `data:image/png;base64,${response.data.qr}`;
+      setQrCode(qrData);
       setQrHtml(null);
     }
   } catch (err) {

@@ -192,15 +192,26 @@ async function startServer() {
     const url = `${serverUrl}/${path}`;
     
     try {
+      // Filter out headers that might cause issues
+      const headers = { ...req.headers };
+      delete headers.host;
+      delete headers.connection;
+      delete headers['content-length'];
+      
+      // Disable caching to avoid 304 responses
+      headers['cache-control'] = 'no-cache';
+      headers['pragma'] = 'no-cache';
+      headers['if-none-match'] = '';
+      headers['if-modified-since'] = '';
+
       const response = await axios({
         method: req.method,
         url: url,
         data: req.body,
         params: req.query,
-        headers: {
-          ...req.headers,
-          host: 'techtaire-server-production-ad0b.up.railway.app'
-        }
+        headers: headers,
+        timeout: 30000, // 30s timeout
+        validateStatus: (status) => true, // Accept all status codes
       });
       res.status(response.status).json(response.data);
     } catch (error: any) {
