@@ -472,7 +472,7 @@ async function startServer() {
     if (!email) return res.status(400).json({ error: "Email is required" });
     
     const baseUrl = (url || 'https://techtaire-server-production.up.railway.app').replace(/\/$/, "");
-    const targetUrl = `${baseUrl}/send?email=${encodeURIComponent(email as string)}`;
+    const targetUrl = `${baseUrl}/send`;
     
     try {
       console.log(`Proxying send request to: ${targetUrl}`);
