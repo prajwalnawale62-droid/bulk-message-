@@ -445,7 +445,24 @@ async function startServer() {
         `https://techtaire-server-production.up.railway.app/qr?email=${encodeURIComponent(email as string)}`,
         { timeout: 15000 }
       );
+      
       res.setHeader('Content-Type', 'application/json');
+      
+      // If response.data is already an object with qr, just send it
+      if (response.data && typeof response.data === 'object' && response.data.qr) {
+        return res.json(response.data);
+      }
+      
+      // If response.data is a string (raw base64 or HTML), wrap it
+      if (typeof response.data === 'string') {
+        // If it looks like HTML, send it as html property
+        if (response.data.trim().startsWith('<')) {
+          return res.json({ html: response.data });
+        }
+        // Otherwise assume it's base64 QR
+        return res.json({ qr: response.data });
+      }
+      
       res.json(response.data);
     } catch (error: any) {
       res.setHeader('Content-Type', 'application/json');

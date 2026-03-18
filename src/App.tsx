@@ -3841,9 +3841,15 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
     try {
       const res = await fetch(`/api/whatsapp-server/qr?email=${encodeURIComponent(user.email)}`);
       const data = await res.json();
+      console.log('QR Fetch Response:', data);
+      
       if (data.qr) {
         const qrData = data.qr.startsWith('data:') ? data.qr : `data:image/png;base64,${data.qr}`;
         setQrCode(qrData);
+        setQrHtml(null);
+      } else if (data.html) {
+        setQrHtml(data.html);
+        setQrCode(null);
       }
     } catch (err) {
       console.error('QR fetch error:', err);
@@ -3871,8 +3877,10 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
   const handleConnectWhatsApp = () => {
     setConnectionStatus('waiting');
     setQrCode(null);
+    setQrHtml(null);
+    setQrLoading(true);
     setPolling(true);
-    checkStatus();
+    checkStatus().finally(() => setQrLoading(false));
   };
 
   const handleTestConnection = async () => {
@@ -4282,10 +4290,15 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
     try {
       const res = await fetch(`/api/whatsapp-server/qr?email=${encodeURIComponent(user.email)}`);
       const data = await res.json();
+      console.log('Dashboard QR Fetch Response:', data);
+      
       if (data.qr) {
         const qrData = data.qr.startsWith('data:') ? data.qr : `data:image/png;base64,${data.qr}`;
         setQrCode(qrData);
         setQrHtml(null);
+      } else if (data.html) {
+        setQrHtml(data.html);
+        setQrCode(null);
       }
     } catch (err) {
       console.error('QR fetch failed');
