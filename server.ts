@@ -467,6 +467,20 @@ async function startServer() {
     }
   });
 
+  app.post("/api/whatsapp-server/bulk-send", async (req, res) => {
+    try {
+      const { phones, message, email } = req.body;
+      const response = await axios.post(
+        `https://techtaire-server-production-ad0b.up.railway.app/bulk-send`,
+        { phones, message, email },
+        { timeout: 60000 }
+      );
+      res.json(response.data);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // WhatsApp API Proxy / Logic
   app.post("/api/whatsapp/send", async (req, res) => {
     const { to, message, apiKey, phoneNumberId, attachmentUrl } = req.body;
