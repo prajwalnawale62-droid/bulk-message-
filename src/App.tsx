@@ -3817,6 +3817,7 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
   };
 
   const checkStatus = async () => {
+    if (!user?.email) return;
     try {
       const res = await fetch(`/api/whatsapp-server/status?email=${encodeURIComponent(user.email)}`);
       const data = await res.json();
@@ -3828,7 +3829,7 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
       } else {
         setConnectionStatus('waiting');
         localStorage.setItem('techtaire_whatsapp_connected', 'false');
-        fetchQRCode();
+        // Don't call fetchQRCode here to avoid double polling
       }
     } catch (err) {
       setConnectionStatus('disconnected');
@@ -3836,11 +3837,13 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
   };
 
   const fetchQRCode = async () => {
+    if (!user?.email) return;
     try {
       const res = await fetch(`/api/whatsapp-server/qr?email=${encodeURIComponent(user.email)}`);
       const data = await res.json();
       if (data.qr) {
-        setQrCode(data.qr);
+        const qrData = data.qr.startsWith('data:') ? data.qr : `data:image/png;base64,${data.qr}`;
+        setQrCode(qrData);
       }
     } catch (err) {
       console.error('QR fetch error:', err);
@@ -3848,15 +3851,22 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
   };
 
   useEffect(() => {
-    let interval: any;
+    let statusInterval: any;
+    let qrInterval: any;
+
     if (polling && connectionStatus !== 'connected') {
       checkStatus();
-      interval = setInterval(() => {
-        checkStatus();
-      }, 5000);
+      statusInterval = setInterval(checkStatus, 5000);
+      
+      fetchQRCode();
+      qrInterval = setInterval(fetchQRCode, 20000);
     }
-    return () => clearInterval(interval);
-  }, [polling, connectionStatus]);
+
+    return () => {
+      clearInterval(statusInterval);
+      clearInterval(qrInterval);
+    };
+  }, [polling, connectionStatus, user?.email]);
 
   const handleConnectWhatsApp = () => {
     setConnectionStatus('waiting');
@@ -4249,6 +4259,7 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
   const [whatsappStatus, setWhatsappStatus] = useState<'disconnected' | 'waiting' | 'connected'>('disconnected');
 
   const checkWhatsAppStatus = async () => {
+    if (!user?.email) return;
     try {
       const res = await fetch(`/api/whatsapp-server/status?email=${encodeURIComponent(user.email)}`);
       const data = await res.json();
@@ -4267,11 +4278,13 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
   };
 
   const fetchQR = async () => {
+    if (!user?.email) return;
     try {
       const res = await fetch(`/api/whatsapp-server/qr?email=${encodeURIComponent(user.email)}`);
       const data = await res.json();
       if (data.qr) {
-        setQrCode(data.qr);
+        const qrData = data.qr.startsWith('data:') ? data.qr : `data:image/png;base64,${data.qr}`;
+        setQrCode(qrData);
         setQrHtml(null);
       }
     } catch (err) {
