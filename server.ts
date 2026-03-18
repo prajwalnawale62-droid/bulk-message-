@@ -427,7 +427,7 @@ async function startServer() {
     const { email } = req.query;
     if (!email) return res.status(400).json({ error: "Email is required" });
     
-    const targetUrl = `https://techtaire-server-production-ad0b.up.railway.app/qr?email=${encodeURIComponent(email as string)}`;
+    const targetUrl = `https://techtaire-server-production.up.railway.app/qr?email=${encodeURIComponent(email as string)}`;
     
     try {
       console.log(`Proxying QR request to: ${targetUrl}`);
@@ -450,7 +450,7 @@ async function startServer() {
     const { email } = req.query;
     if (!email) return res.status(400).json({ error: "Email is required" });
     
-    const targetUrl = `https://techtaire-server-production-ad0b.up.railway.app/status?email=${encodeURIComponent(email as string)}`;
+    const targetUrl = `https://techtaire-server-production.up.railway.app/status?email=${encodeURIComponent(email as string)}`;
     
     try {
       console.log(`Proxying status request to: ${targetUrl}`);
@@ -471,12 +471,12 @@ async function startServer() {
     const { url, phone, message, email } = req.body;
     if (!email) return res.status(400).json({ error: "Email is required" });
     
-    const baseUrl = (url || 'https://techtaire-server-production-ad0b.up.railway.app').replace(/\/$/, "");
+    const baseUrl = (url || 'https://techtaire-server-production.up.railway.app').replace(/\/$/, "");
     const targetUrl = `${baseUrl}/send?email=${encodeURIComponent(email as string)}`;
     
     try {
       console.log(`Proxying send request to: ${targetUrl}`);
-      const response = await axios.post(targetUrl, { phone, message });
+      const response = await axios.post(targetUrl, { phone, message, email });
       res.json(response.data);
     } catch (error: any) {
       console.error("WhatsApp Server Send Proxy Error:", error.message);
