@@ -441,32 +441,59 @@ async function startServer() {
   app.get("/api/whatsapp-server/qr", async (req, res) => {
     try {
       const email = req.query.email || 'default';
+      // Use arraybuffer to handle potential binary image data
       const response = await axios.get(
         `https://techtaire-server-production.up.railway.app/qr?email=${encodeURIComponent(email as string)}`,
-        { timeout: 15000 }
+        { 
+          timeout: 20000,
+          responseType: 'arraybuffer' 
+        }
       );
       
+      const contentType = response.headers['content-type'] || '';
       res.setHeader('Content-Type', 'application/json');
       
-      // If response.data is already an object with qr, just send it
-      if (response.data && typeof response.data === 'object' && response.data.qr) {
-        return res.json(response.data);
+      // If the response is an image, convert to base64 data URL
+      if (contentType.includes('image')) {
+        const base64 = Buffer.from(response.data).toString('base64');
+        return res.json({ qr: `data:${contentType};base64,${base64}` });
       }
       
-      // If response.data is a string (raw base64 or HTML), wrap it
-      if (typeof response.data === 'string') {
-        // If it looks like HTML, send it as html property
-        if (response.data.trim().startsWith('<')) {
-          return res.json({ html: response.data });
+      // Otherwise, treat as text (JSON or HTML/Base64 string)
+      const dataString = Buffer.from(response.data).toString('utf-8');
+      
+      try {
+        // Try parsing as JSON
+        const jsonData = JSON.parse(dataString);
+        
+        // If it's an object with qr/html, return as is
+        if (jsonData && typeof jsonData === 'object') {
+          if (jsonData.qr || jsonData.html) {
+            return res.json(jsonData);
+          }
+          // If it's a raw string inside JSON
+          if (typeof jsonData === 'string') {
+            return res.json({ qr: jsonData });
+          }
         }
-        // Otherwise assume it's base64 QR
-        return res.json({ qr: response.data });
+        return res.json(jsonData);
+      } catch (e) {
+        // Not JSON, handle as raw string (HTML or Base64)
+        const trimmed = dataString.trim();
+        if (trimmed.startsWith('<')) {
+          return res.json({ html: trimmed });
+        }
+        // Assume it's a raw base64 string
+        return res.json({ qr: trimmed });
       }
-      
-      res.json(response.data);
     } catch (error: any) {
+      console.error('WhatsApp QR Proxy Error:', error.message);
       res.setHeader('Content-Type', 'application/json');
-      res.json({ status: 'initializing' });
+      res.status(200).json({ 
+        status: 'initializing', 
+        message: 'Server is preparing your QR code...',
+        error: error.message 
+      });
     }
   });
 

@@ -3865,7 +3865,7 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
       statusInterval = setInterval(checkStatus, 5000);
       
       fetchQRCode();
-      qrInterval = setInterval(fetchQRCode, 20000);
+      qrInterval = setInterval(fetchQRCode, 10000); // Reduced to 10s for faster updates
     }
 
     return () => {
@@ -4054,7 +4054,10 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
           {(qrLoading || (polling && !qrCode && !qrHtml)) && (
             <div className="flex flex-col items-center gap-4 p-10 bg-white/5 rounded-3xl border border-white/10">
               <RefreshCw className="animate-spin text-amethyst" size={40} />
-              <p className="text-sm font-black text-white uppercase tracking-widest">Generating QR Code</p>
+              <p className="text-sm font-black text-white uppercase tracking-widest text-center">
+                Preparing WhatsApp Server...<br/>
+                <span className="text-[10px] opacity-50">This may take up to 30 seconds</span>
+              </p>
             </div>
           )}
 
@@ -4323,7 +4326,7 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
   useEffect(() => {
     let interval: any;
     if (isConnecting && whatsappStatus !== 'connected') {
-      interval = setInterval(fetchQR, 20000);
+      interval = setInterval(fetchQR, 10000); // Reduced to 10s
     }
     return () => clearInterval(interval);
   }, [isConnecting, whatsappStatus]);
