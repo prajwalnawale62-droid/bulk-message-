@@ -3856,7 +3856,7 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
     if (polling) {
       interval = setInterval(() => {
         checkStatus(serverConfig.url);
-      }, 5000);
+      }, 20000);
     }
     return () => clearInterval(interval);
   }, [polling, serverConfig.url]);
@@ -4012,9 +4012,9 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
             <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Server URL</label>
             <input 
               type="text" 
-              value={serverConfig.url}
-              onChange={(e) => setServerConfig({ ...serverConfig, url: e.target.value })}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:border-amethyst transition-all"
+              value="https://techtaire-server-production.up.railway.app"
+              readOnly
+              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-soft-lavender/40 cursor-not-allowed outline-none transition-all"
               placeholder="https://your-server.com"
             />
           </div>
@@ -4059,9 +4059,9 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
           )}
 
           {qrCode && (
-            <div className="flex flex-col items-center gap-4 p-6 bg-white rounded-3xl">
+            <div className="flex flex-col items-center gap-4 p-6 bg-white rounded-3xl shadow-2xl">
               <p className="text-xs font-black text-deep-night uppercase tracking-widest">Scan QR Code with WhatsApp</p>
-              <img src={qrCode} alt="WhatsApp QR Code" className="w-64 h-64" />
+              <img src={qrCode} alt="WhatsApp QR Code" style={{ width: '280px', height: '280px' }} className="object-contain" />
               <p className="text-[10px] text-deep-night/40 italic text-center">
                 Open WhatsApp &gt; Menu or Settings &gt; Linked Devices &gt; Link a Device
               </p>
@@ -4299,7 +4299,7 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
   useEffect(() => {
     let interval: any;
     if (isConnecting && whatsappStatus !== 'connected') {
-      interval = setInterval(fetchQR, 5000);
+      interval = setInterval(fetchQR, 20000);
     }
     return () => clearInterval(interval);
   }, [isConnecting, whatsappStatus]);
@@ -4441,20 +4441,26 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
             )}
           </div>
 
-          <div className="w-full lg:w-72 aspect-square glass-panel p-4 flex items-center justify-center bg-white/5 border-white/10 relative overflow-hidden">
+          <div className="w-full lg:w-[320px] aspect-square glass-panel p-4 flex items-center justify-center bg-white/5 border-white/10 relative overflow-hidden">
             {qrLoading ? (
               <div className="flex flex-col items-center gap-3">
                 <RefreshCw className="animate-spin text-amethyst" size={32} />
                 <p className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Generating QR Code</p>
               </div>
             ) : qrHtml ? (
-              <div 
-                className="w-full h-full flex items-center justify-center"
-                dangerouslySetInnerHTML={{ __html: qrHtml }} 
-              />
+              <div className="flex flex-col items-center gap-2 w-full h-full">
+                <p className="text-[10px] font-black text-white uppercase tracking-widest">Scan QR Code with WhatsApp</p>
+                <div 
+                  className="w-full h-full flex items-center justify-center bg-white p-2 rounded-xl"
+                  dangerouslySetInnerHTML={{ __html: qrHtml }} 
+                />
+              </div>
             ) : qrCode ? (
-              <div className="w-full h-full flex items-center justify-center p-2 bg-white rounded-xl">
-                <img src={qrCode} alt="WhatsApp QR" className="w-full h-full object-contain" />
+              <div className="flex flex-col items-center gap-2 w-full h-full">
+                <p className="text-[10px] font-black text-white uppercase tracking-widest">Scan QR Code with WhatsApp</p>
+                <div className="w-full h-full flex items-center justify-center p-2 bg-white rounded-xl">
+                  <img src={qrCode} alt="WhatsApp QR" style={{ width: '280px', height: '280px' }} className="object-contain" />
+                </div>
               </div>
             ) : isConnecting && !qrHtml && !qrCode ? (
               <div className="flex flex-col items-center gap-3">
