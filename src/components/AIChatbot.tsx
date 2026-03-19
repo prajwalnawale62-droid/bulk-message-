@@ -29,7 +29,7 @@ export const AIChatbot = ({ user }: { user: any }) => {
 
   const checkWhatsAppStatus = async () => {
     try {
-      const serverUrl = '/api/whatsapp-server';
+      const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
       const res = await fetch(`${serverUrl}/status?email=${user?.email}&t=${Date.now()}`);
       const data = await res.json();
       setIsConnected(data.connected);
@@ -43,7 +43,7 @@ export const AIChatbot = ({ user }: { user: any }) => {
 
   const fetchWhatsAppQR = async () => {
     try {
-      const serverUrl = '/api/whatsapp-server';
+      const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
       const res = await fetch(`${serverUrl}/qr?email=${user?.email}&t=${Date.now()}`);
       const data = await res.json();
       if (data.qr) {
@@ -214,7 +214,7 @@ export const AIChatbot = ({ user }: { user: any }) => {
               });
             } else {
               try {
-                const serverUrl = '/api/whatsapp-server';
+                const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
                 const res = await fetch(`${serverUrl}/send`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -242,7 +242,7 @@ export const AIChatbot = ({ user }: { user: any }) => {
               });
             } else {
               try {
-                const serverUrl = '/api/whatsapp-server';
+                const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
                 const res = await fetch(`${serverUrl}/bulk-send`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
