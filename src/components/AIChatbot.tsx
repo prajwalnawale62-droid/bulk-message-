@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, X, MessageSquare, SendHorizontal, RefreshCw } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { cn } from '../lib/utils';
+import * as wa from '../lib/whatsapp';
 
 interface Message {
   role: 'user' | 'bot';
@@ -11,6 +12,7 @@ interface Message {
 }
 
 export const AIChatbot = ({ user }: { user: any }) => {
+  const getCurrentUserEmail = () => user?.email || user?.uid || 'anonymous';
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<Message[]>([
     { role: 'bot', content: "Hello! I'm your Techtaire AI assistant. Checking WhatsApp connection..." }
@@ -19,6 +21,7 @@ export const AIChatbot = ({ user }: { user: any }) => {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const [hasCheckedStartup, setHasCheckedStartup] = useState(false);
+  const [qrCode, setQrCode] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -29,31 +32,15 @@ export const AIChatbot = ({ user }: { user: any }) => {
 
   const checkWhatsAppStatus = async () => {
     try {
-      const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
-      const res = await fetch(`${serverUrl}/status?email=${user?.email}&t=${Date.now()}`);
-      const data = await res.json();
-      setIsConnected(data.connected);
-      return data.connected;
+      const userEmail = getCurrentUserEmail();
+      const status = await wa.getStatus(userEmail);
+      const connected = status === 'connected';
+      setIsConnected(connected);
+      return connected;
     } catch (err) {
       console.error("Status check failed", err);
       setIsConnected(false);
       return false;
-    }
-  };
-
-  const fetchWhatsAppQR = async () => {
-    try {
-      const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
-      const res = await fetch(`${serverUrl}/qr?email=${user?.email}&t=${Date.now()}`);
-      const data = await res.json();
-      if (data.qr) {
-        const qrData = data.qr.startsWith('data:') ? data.qr : `data:image/png;base64,${data.qr}`;
-        return qrData;
-      }
-      return null;
-    } catch (err) {
-      console.error("QR fetch failed", err);
-      return null;
     }
   };
 
@@ -63,19 +50,18 @@ export const AIChatbot = ({ user }: { user: any }) => {
     setIsChatLoading(true);
 
     const connected = await checkWhatsAppStatus();
+    setIsConnected(connected);
     if (connected) {
       setChatMessages(prev => [
         ...prev,
         { role: 'bot', content: "✅ WhatsApp Connected! Ready to send messages." }
       ]);
     } else {
-      const qr = await fetchWhatsAppQR();
       setChatMessages(prev => [
         ...prev,
         { 
           role: 'bot', 
-          content: "⚠️ WhatsApp is disconnected. Please scan this QR code to reconnect:",
-          image: qr || undefined
+          content: "⚠️ WhatsApp is disconnected. Please scan the QR code below to connect."
         }
       ]);
     }
@@ -87,6 +73,23 @@ export const AIChatbot = ({ user }: { user: any }) => {
       handleStartup();
     }
   }, [isChatOpen]);
+
+  useEffect(() => {
+    if (!isChatOpen) return;
+    
+    const userEmail = getCurrentUserEmail();
+    const socket = wa.listenForQR(userEmail, (qr) => {
+      setQrCode(qr);
+      setIsConnected(false);
+    }, () => {
+      setIsConnected(true);
+      setQrCode(null);
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [isChatOpen, user]);
 
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,29 +150,18 @@ export const AIChatbot = ({ user }: { user: any }) => {
       const systemInstruction = `You are a WhatsApp automation assistant.
       
       TOOLS AVAILABLE
-      You can make HTTP requests to this server:
-      Base URL: https://techtaire-server-production-ad0b.up.railway.app
-      
-      Endpoints:
-      - GET /status → { connected: true/false }
-      - GET /qr → { status: "pending", qr: "data:image/png;base64,..." } OR { status: "connected" }
-      - POST /send → body: { phone: "919876543210", message: "text" } → { success: true }
-      - POST /bulk-send → body: { phones: ["91...","91..."], message: "text" } → { success: true, sent: N, total: N }
+      You have access to tools to check status, send single messages, and send bulk messages.
       
       STARTUP BEHAVIOR (MOST IMPORTANT)
       As soon as conversation starts:
-      1. Call GET /status
-      2. If connected = false → Call GET /qr → Display the base64 QR image inline to user
-      3. If connected = true → Say "✅ WhatsApp Connected! Ready to send messages."
-      4. Keep auto-checking every response until connected
+      1. If connected = false → Tell the user to scan the QR code displayed in the chat.
+      2. If connected = true → Say "✅ WhatsApp Connected! Ready to send messages."
       
       RULES:
       - ALWAYS check connection before sending any message using checkStatus.
       - If user says "send message to 9876543210 saying Hello" → call sendWhatsAppMessage with phone and message.
       - If user says "bulk send" → call sendBulkWhatsAppMessages with phones array and message.
       - Phone numbers must include country code (91 for India), no spaces or symbols.
-      - If disconnected mid-session (connected = false), fetch QR again and show it.
-      - Display QR as image, not as text.
       
       BEHAVIOR:
       - Be concise, action-first.
@@ -214,13 +206,8 @@ export const AIChatbot = ({ user }: { user: any }) => {
               });
             } else {
               try {
-                const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
-                const res = await fetch(`${serverUrl}/send`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ phone, message, email: user?.email })
-                });
-                const data = await res.json();
+                const userEmail = getCurrentUserEmail();
+                const data = await wa.sendMessage(userEmail, phone, message);
                 functionResponses.push({
                   name: "sendWhatsAppMessage",
                   response: data
@@ -242,13 +229,8 @@ export const AIChatbot = ({ user }: { user: any }) => {
               });
             } else {
               try {
-                const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
-                const res = await fetch(`${serverUrl}/bulk-send`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ phones, message, email: user?.email })
-                });
-                const data = await res.json();
+                const userEmail = getCurrentUserEmail();
+                const data = await wa.sendBulk(userEmail, phones, message);
                 functionResponses.push({
                   name: "sendBulkWhatsAppMessages",
                   response: data
@@ -274,7 +256,7 @@ export const AIChatbot = ({ user }: { user: any }) => {
             { role: 'user', parts: [{ text: userMessage }] },
             { role: 'model', parts: response.candidates[0].content.parts },
             {
-              role: 'user',
+              role: 'function',
               parts: functionResponses.map(res => ({
                 functionResponse: {
                   name: res.name,
@@ -292,14 +274,7 @@ export const AIChatbot = ({ user }: { user: any }) => {
       
       const botResponse = response.text || "I've processed your request.";
       
-      // If bot says it's disconnected, fetch QR and show it
-      let qrImage = undefined;
-      if (!connected || botResponse.toLowerCase().includes('disconnected') || botResponse.toLowerCase().includes('scan')) {
-        const qr = await fetchWhatsAppQR();
-        if (qr) qrImage = qr;
-      }
-
-      setChatMessages(prev => [...prev, { role: 'bot', content: botResponse, image: qrImage }]);
+      setChatMessages(prev => [...prev, { role: 'bot', content: botResponse }]);
     } catch (error) {
       console.error("Chat error:", error);
       setChatMessages(prev => [...prev, { role: 'bot', content: "Sorry, I'm having trouble connecting right now. Please try again later." }]);
@@ -380,6 +355,14 @@ export const AIChatbot = ({ user }: { user: any }) => {
                   >
                     ...
                   </motion.div>
+                </div>
+              )}
+              {qrCode && !isConnected && (
+                <div className="flex flex-col items-center justify-center p-4 bg-white/5 rounded-2xl mt-4">
+                  <p className="text-sm text-soft-lavender mb-3 text-center">Scan this QR code with WhatsApp to connect</p>
+                  <div className="bg-white p-2 rounded-xl">
+                    <img src={qrCode} alt="WhatsApp QR Code" className="w-48 h-48" />
+                  </div>
                 </div>
               )}
               <div ref={chatEndRef} />

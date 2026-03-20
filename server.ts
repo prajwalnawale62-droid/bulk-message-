@@ -188,7 +188,7 @@ async function startServer() {
   // --- WhatsApp Railway Server Proxy ---
   app.all("/api/whatsapp-server/:path(*)", async (req, res) => {
     const path = req.params.path;
-    const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
+    const serverUrl = 'https://techtaire-server-production.up.railway.app';
     const url = `${serverUrl}/${path}`;
     
     try {
@@ -490,42 +490,22 @@ async function startServer() {
     res.status(200).send("OK");
   });
 
-  // AI Template Generation
-  app.post("/api/ai/generate-template", async (req, res) => {
-    const { prompt } = req.body;
-    const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-
-    if (!ANTHROPIC_API_KEY) {
-      return res.status(500).json({ error: "Anthropic API key not configured" });
-    }
-
+  // --- WhatsApp Proxy ---
+  app.post("/api/whatsapp/proxy", async (req, res) => {
+    const { url, method, body, headers } = req.body;
     try {
-      const response = await axios.post(
-        "https://api.anthropic.com/v1/messages",
-        {
-          model: "claude-haiku-4-5-20251001", // Using the model requested by the user
-          max_tokens: 1000,
-          messages: [
-            {
-              role: "user",
-              content: "You are a WhatsApp message template generator. Generate a professional WhatsApp message template based on this description: " + prompt + ". Return only the message text, nothing else. Keep it under 300 characters."
-            }
-          ]
-        },
-        {
-          headers: {
-            "x-api-key": ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json"
-          }
+      const response = await axios({
+        url: `https://techtaire-server-production.up.railway.app${url}`,
+        method,
+        data: body,
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json'
         }
-      );
-
-      const template = response.data.content[0].text;
-      res.json({ template });
-    } catch (error: any) {
-      console.error("AI Generation Error:", error.response?.data || error.message);
-      res.status(500).json({ error: "Failed to generate. Please try again." });
+      });
+      res.json(response.data);
+    } catch (err: any) {
+      res.status(err.response?.status || 500).json(err.response?.data || { message: err.message });
     }
   });
 

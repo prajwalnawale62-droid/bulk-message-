@@ -46,3 +46,34 @@ export const enhanceMessage = async (
     return message;
   }
 };
+
+export const generateTemplate = async (prompt: string) => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.error("AI Generate: GEMINI_API_KEY is not defined in environment variables.");
+    return "Failed to generate. Please try again.";
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+  
+  const systemInstruction = `You are a WhatsApp message template generator. 
+  Generate a professional WhatsApp message template based on the user's description. 
+  Return only the message text, nothing else. 
+  Keep it under 300 characters. 
+  Use placeholders like {name}, {batch}, {course} if appropriate.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        systemInstruction
+      }
+    });
+    
+    return response.text?.trim() || "Failed to generate. Please try again.";
+  } catch (error) {
+    console.error("AI Generation Error:", error);
+    return "Failed to generate. Please try again.";
+  }
+};

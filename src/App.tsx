@@ -62,11 +62,14 @@ import { motion, AnimatePresence, useScroll, useSpring, useTransform } from 'fra
 import { GoogleGenAI } from "@google/genai";
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { cn } from './lib/utils';
-import { enhanceMessage } from './services/aiService';
+import { enhanceMessage, generateTemplate } from './services/aiService';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import confetti from 'canvas-confetti';
+import { io, Socket } from 'socket.io-client';
 import { AIChatbot } from './components/AIChatbot';
+import * as wa from './lib/whatsapp';
+import * as waApi from './whatsappApi';
 import { 
   LineChart, 
   Line, 
@@ -737,6 +740,7 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [logoClicks, setLogoClicks] = useState(0);
   const isAdmin = user?.email === 'prajwalnawale3040@gmail.com';
+  const getCurrentUserEmail = () => user?.email || user?.uid || 'anonymous';
   const isExpired = profile?.plan === 'free_trial' && profile?.trial_expiry && new Date(profile.trial_expiry) < new Date();
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -910,13 +914,25 @@ export default function App() {
     // Initial session check
     const checkSession = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        setUser(session?.user ?? null);
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error("Session check error:", error);
+          if (error.message.includes('Refresh Token Not Found')) {
+            await supabase.auth.signOut();
+            setUser(null);
+          }
+        } else {
+          setUser(session?.user ?? null);
+        }
         // Always start at landing page as per user request
         setView('landing');
         setLoading(false);
-      } catch (err) {
+      } catch (err: any) {
         console.error("Session check error:", err);
+        if (err.message && err.message.includes('Refresh Token Not Found')) {
+          await supabase.auth.signOut();
+          setUser(null);
+        }
         setLoading(false);
       }
     };
@@ -2995,6 +3011,7 @@ function ContactsView({ user, showNotify }: { user: any, showNotify: (m: string,
 }
 
 function MessagingView({ profile, user, showNotify }: { profile: any, user: any, showNotify: (m: string, t?: 'success' | 'error' | 'info' | 'warning') => void }) {
+  const getCurrentUserEmail = () => user?.email || user?.uid || 'anonymous';
   const [message, setMessage] = useState('');
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [sending, setSending] = useState(false);
@@ -3012,13 +3029,14 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedTemplate, setGeneratedTemplate] = useState('');
   const [sendingProgress, setSendingProgress] = useState('');
+  const [selectedTone, setSelectedTone] = useState<'professional' | 'friendly' | 'marketing' | 'motivational'>('professional');
 
   const handleAiGenerate = async () => {
     if (!aiPrompt) return;
     setIsGenerating(true);
     try {
-      const response = await axios.post('/api/ai/generate-template', { prompt: aiPrompt });
-      setGeneratedTemplate(response.data.template);
+      const template = await generateTemplate(aiPrompt);
+      setGeneratedTemplate(template);
     } catch (error: any) {
       showNotify("Failed to generate. Please try again.", "error");
     } finally {
@@ -3092,7 +3110,7 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
     if (!message) return;
     setIsEnhancing(true);
     try {
-      const enhanced = await enhanceMessage(message, 'marketing', { emoji: true, grammar: true });
+      const enhanced = await enhanceMessage(message, selectedTone, { emoji: true, grammar: true });
       if (enhanced === message) {
         showNotify("AI could not enhance the message. Check your API key.", "error");
       } else {
@@ -3119,16 +3137,12 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
     if (!message && !attachment) return;
     if (!user) return;
     
-    const ultramsgSaved = localStorage.getItem('techtaire_ultramsg_config');
-    const ultramsg = ultramsgSaved ? JSON.parse(ultramsgSaved) : null;
-    const hasUltra = ultramsg && ultramsg.url && ultramsg.token;
-
     const isConnected = localStorage.getItem('techtaire_whatsapp_connected') === 'true';
-    const server = JSON.parse(localStorage.getItem('techtaire_server_config') || '{"url":"https://techtaire-server-production-ad0b.up.railway.app"}');
+    const server = JSON.parse(localStorage.getItem('techtaire_server_config') || '{"url":"https://techtaire-server-production.up.railway.app"}');
     const hasServer = server && server.url && isConnected;
 
-    if (!hasServer && !hasUltra && (!profile.whatsapp_api_key || !profile.whatsapp_phone_number_id)) {
-      alert("Please configure WhatsApp Server or API settings first");
+    if (!hasServer) {
+      alert("Please connect WhatsApp first");
       return;
     }
 
@@ -3208,59 +3222,24 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
       let successCount = 0;
       let failCount = 0;
       let errorMessages: string[] = [];
+      const userEmail = getCurrentUserEmail();
+      const serverUrl = 'https://techtaire-server-production.up.railway.app';
+      const token = localStorage.getItem('wa_token');
 
-      for (let i = 0; i < contactsToSend.length; i++) {
-        if (successCount + failCount >= maxMessages) break;
+      try {
+        const phones = contactsToSend.map(c => cleanPhoneNumber(c.whatsapp_number)).filter(Boolean);
+        setSendingProgress(`Sending bulk to ${phones.length} contacts...`);
         
-        setSendingProgress(`Sending ${i + 1}/${contactsToSend.length}...`);
+        if (!token) throw new Error("WhatsApp token not found. Please reconnect.");
         
-        const contact = contactsToSend[i];
-        const cleanNumber = cleanPhoneNumber(contact.whatsapp_number);
+        const response = await waApi.sendBulkMessages(token, phones.map(phone => ({ phone, message })));
         
-        // Skip empty numbers
-        if (!cleanNumber) {
-          console.warn(`Skipping contact with empty WhatsApp number: ${contact.name}`);
-          continue;
-        }
-
-        try {
-          if (hasServer) {
-  await axios.post(`https://techtaire-server-production-ad0b.up.railway.app/send`, {
-    phone: cleanNumber,
-    message: message,
-    email: user.email
-  });
-} else if (hasUltra) {
-            const params = new URLSearchParams();
-            params.append('token', ultramsg.token);
-            params.append('to', cleanNumber);
-            params.append('body', message);
-            
-            await axios.post(`${ultramsg.url}messages/chat`, params, {
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-            });
-          } else {
-            await axios.post('/api/whatsapp/send', {
-              to: cleanNumber,
-              message,
-              apiKey: profile.whatsapp_api_key,
-              phoneNumberId: profile.whatsapp_phone_number_id,
-              attachmentUrl: attachmentPreview
-            });
-          }
-          successCount++;
-        } catch (e: any) {
-          failCount++;
-          const status = e.response?.status;
-          const errorData = e.response?.data;
-          let msg = errorData?.error?.message || errorData?.message || e.message;
-          
-          console.error(`Messaging Error for ${cleanNumber}:`, errorData || e.message);
-          
-          if (!errorMessages.includes(msg)) {
-            errorMessages.push(msg);
-          }
-        }
+        successCount = response.sentCount || phones.length;
+        failCount = (response.totalCount || phones.length) - successCount;
+      } catch (e: any) {
+        console.error("Bulk sending error:", e);
+        showNotify("Failed to send bulk messages", "error");
+        throw e;
       }
 
       // 3. Log campaign
@@ -3310,6 +3289,19 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-black text-white tracking-tight">Compose Message</h3>
             <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5">
+                <span className="text-[10px] font-black text-soft-lavender/40 uppercase tracking-widest">Tone:</span>
+                <select 
+                  value={selectedTone}
+                  onChange={(e) => setSelectedTone(e.target.value as any)}
+                  className="bg-transparent text-xs font-bold text-white outline-none cursor-pointer"
+                >
+                  <option value="professional" className="bg-deep-night">Professional</option>
+                  <option value="friendly" className="bg-deep-night">Friendly</option>
+                  <option value="marketing" className="bg-deep-night">Marketing</option>
+                  <option value="motivational" className="bg-deep-night">Motivational</option>
+                </select>
+              </div>
               <button 
                 onClick={() => setShowTemplates(true)}
                 disabled={isExpired}
@@ -3754,274 +3746,75 @@ function HistoryView({ user, showNotify }: { user: any, showNotify: (m: string, 
 }
 
 function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { user: any, profile: any, onUpdate: () => void, onOpenModal: (type: any) => void, showNotify: (m: string, t?: 'success' | 'error' | 'info' | 'warning') => void }) {
-  const [whatsappConfig, setWhatsappConfig] = useState(() => {
-    const saved = localStorage.getItem('techtaire_whatsapp_config');
-    const parsed = saved ? JSON.parse(saved) : null;
-    return {
-      api_key: profile?.whatsapp_api_key || parsed?.api_key || '',
-      phone_number_id: profile?.whatsapp_phone_number_id || parsed?.phone_number_id || ''
-    };
-  });
-  const [ultramsgConfig, setUltramsgConfig] = useState(() => {
-    const saved = localStorage.getItem('techtaire_ultramsg_config');
-    return saved ? JSON.parse(saved) : { url: '', token: '' };
-  });
-  const [serverConfig, setServerConfig] = useState({ 
-    url: 'https://techtaire-server-production-ad0b.up.railway.app' 
-  });
-  const [qrCode, setQrCode] = useState<string | null>(null);
-  const [qrHtml, setQrHtml] = useState<string | null>(null);
-  const [qrLoading, setQrLoading] = useState(false);
+  const getCurrentUserEmail = () => user?.email || user?.uid || 'anonymous';
+  const serverUrl = 'https://techtaire-server-production.up.railway.app';
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'waiting' | 'connected'>('disconnected');
-  const [polling, setPolling] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<any>(null);
-  const [testingUltra, setTestingUltra] = useState(false);
-  const [ultraTestResult, setUltraTestResult] = useState<any>(null);
+  const [qrCode, setQrCode] = useState<string | null>(null);
 
-  const handleTestUltraMsg = async () => {
-    if (!ultramsgConfig.url || !ultramsgConfig.token) {
-      showNotify("Please enter both UltraMsg API URL and Token first.", "warning");
-      return;
-    }
-
-    setTestingUltra(true);
-    setUltraTestResult(null);
+  const checkWhatsAppStatus = async () => {
     try {
-      const response = await axios.get(`${ultramsgConfig.url}instance/status?token=${ultramsgConfig.token}`);
-      setUltraTestResult({ success: true, data: response.data });
-      showNotify("✅ UltraMsg Connection Test Successful!", "success");
-    } catch (e: any) {
-      setUltraTestResult({ success: false, error: e.response?.data || e.message, status: e.response?.status });
-      showNotify("❌ UltraMsg Connection Test Failed.", "error");
-    } finally {
-      setTestingUltra(false);
-    }
-  };
-
-  const handleSaveUltra = () => {
-    localStorage.setItem('techtaire_ultramsg_config', JSON.stringify(ultramsgConfig));
-    showNotify("✅ UltraMsg settings saved successfully!", "success");
-  };
-
-const checkStatus = async (url: string) => {
-  try {
-    const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
-    const response = await axios.get(`${serverUrl}/status?email=${user?.email}&t=${Date.now()}`, {
-      validateStatus: (status) => status < 400
-    });
-    if (response.data.connected === true) {
-      setConnectionStatus('connected');
-      setPolling(false);
-      setQrHtml(null);
-      setQrCode(null);
-      localStorage.setItem('techtaire_whatsapp_connected', 'true');
-    } else {
-      setConnectionStatus('waiting');
-      setPolling(true);
-      localStorage.setItem('techtaire_whatsapp_connected', 'false');
-      const qrResponse = await axios.get(`${serverUrl}/qr?email=${user?.email}&t=${Date.now()}`, {
-        validateStatus: (status) => status < 400
-      });
-      if (qrResponse.data.qr) {
-        const qrData = qrResponse.data.qr.startsWith('data:') ? qrResponse.data.qr : `data:image/png;base64,${qrResponse.data.qr}`;
-        setQrCode(qrData);
-        setQrHtml(null);
-      }
-    }
-  } catch (err: any) {
-    setConnectionStatus('disconnected');
-    localStorage.setItem('techtaire_whatsapp_connected', 'false');
-  } finally {
-    setQrLoading(false);
-  }
-};
-
-  const fetchQRCode = async () => {
-    try {
-      const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
-      const res = await fetch(`${serverUrl}/qr?email=${user?.email}`);
-      const data = await res.json();
-      console.log('QR Fetch Response:', data);
-      
-      if (data.qr) {
-        const qrData = data.qr.startsWith('data:') ? data.qr : `data:image/png;base64,${data.qr}`;
-        setQrCode(qrData);
-        setQrHtml(null);
-      } else if (data.html) {
-        setQrHtml(data.html);
+      const userEmail = getCurrentUserEmail();
+      const status = await wa.getStatus(userEmail);
+      if (status === 'connected') {
+        setConnectionStatus('connected');
         setQrCode(null);
+        localStorage.setItem('techtaire_whatsapp_connected', 'true');
+      } else {
+        setConnectionStatus('waiting');
+        localStorage.setItem('techtaire_whatsapp_connected', 'false');
       }
-    } catch (err) {
-      console.error('QR fetch error:', err);
+    } catch (err: any) {
+      console.error("Failed to check status", err);
+      setConnectionStatus('disconnected');
+      localStorage.setItem('techtaire_whatsapp_connected', 'false');
     }
   };
 
   useEffect(() => {
-    let statusInterval: any;
-    let qrInterval: any;
+    let interval: any;
+    interval = setInterval(checkWhatsAppStatus, 5000);
+    checkWhatsAppStatus();
+    return () => clearInterval(interval);
+  }, [user]);
 
-    if (polling && connectionStatus !== 'connected') {
-      checkStatus('');
-      statusInterval = setInterval(() => checkStatus(''), 5000);
-      
-      fetchQRCode();
-      qrInterval = setInterval(fetchQRCode, 10000); // Reduced to 10s for faster updates
-    }
+  useEffect(() => {
+    const userEmail = getCurrentUserEmail();
+    const socket = wa.listenForQR(userEmail, (qr) => {
+      setQrCode(qr);
+      setConnectionStatus('waiting');
+    }, () => {
+      setConnectionStatus('connected');
+      setQrCode(null);
+      localStorage.setItem('techtaire_whatsapp_connected', 'true');
+    });
 
     return () => {
-      clearInterval(statusInterval);
-      clearInterval(qrInterval);
+      socket.disconnect();
     };
-  }, [polling, connectionStatus, user?.email]);
+  }, [user]);
 
-const handleConnectWhatsApp = () => {
-  const url = 'https://techtaire-server-production-ad0b.up.railway.app';
-  localStorage.setItem('techtaire_server_config', JSON.stringify({ url }));
-  setConnectionStatus('waiting');
-  setQrCode(null);
-  setQrHtml(null);
-  setPolling(true);
-  setQrLoading(true);
-  checkStatus(url);
-};
-
-  const handleTestConnection = async () => {
-    if (!whatsappConfig.api_key || !whatsappConfig.phone_number_id) {
-      showNotify("Please enter both Access Token and Phone Number ID first.", "warning");
-      return;
-    }
-
-    setTesting(true);
-    setTestResult(null);
+  const handleConnectWhatsApp = async () => {
     try {
-      const response = await axios.post('/api/whatsapp/send', {
-        to: '919551522030', 
-        message: 'Teachtaire Connection Test: Your WhatsApp API is now correctly configured! ✅',
-        apiKey: whatsappConfig.api_key,
-        phoneNumberId: whatsappConfig.phone_number_id
-      });
-
-      setTestResult({
-        success: true,
-        data: response.data
-      });
-      showNotify("✅ Connection Test Successful! Check your WhatsApp.", "success");
-    } catch (e: any) {
-      const errorData = e.response?.data || e.message;
-      setTestResult({
-        success: false,
-        error: errorData,
-        status: e.response?.status
-      });
-      showNotify("❌ Connection Test Failed. Check the error details.", "error");
-    } finally {
-      setTesting(false);
+      setQrCode(null);
+      const userEmail = getCurrentUserEmail();
+      await wa.connectWhatsApp(userEmail);
+      checkWhatsAppStatus();
+    } catch (err: any) {
+      console.error("Failed to connect", err);
+      showNotify(`Connection failed: ${err.message}`, "error");
     }
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          whatsapp_api_key: whatsappConfig.api_key,
-          whatsapp_phone_number_id: whatsappConfig.phone_number_id
-        })
-        .eq('id', profile.id);
-      
-      if (error) throw error;
-      
-      // Persist to localStorage as well
-      localStorage.setItem('techtaire_whatsapp_config', JSON.stringify(whatsappConfig));
-      
-      showNotify("✅ Settings saved successfully!", "success");
-      onUpdate();
-    } catch (err: any) {
-      showNotify("Failed to save settings: " + err.message, "error");
-    } finally {
-      setSaving(false);
-    }
+  const handleDisconnectWhatsApp = async () => {
+    setConnectionStatus('disconnected');
+    setQrCode(null);
+    localStorage.setItem('techtaire_whatsapp_connected', 'false');
+    localStorage.removeItem('wa_token_' + getCurrentUserEmail());
+    showNotify("WhatsApp disconnected locally", "success");
   };
 
   return (
     <div className="max-w-2xl space-y-8">
-      <div className="glass-panel p-10 space-y-8">
-        <h3 className="text-xl font-black text-white tracking-tight">WhatsApp API Configuration</h3>
-        <div className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Access Token</label>
-            <input 
-              type="password" 
-              value={whatsappConfig.api_key}
-              onChange={(e) => setWhatsappConfig({ ...whatsappConfig, api_key: e.target.value })}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:border-amethyst transition-all"
-              placeholder="EAAB..."
-            />
-            <p className="text-[10px] text-soft-lavender/40 mt-1 italic">
-              Note: Temporary access tokens expire every 24 hours. For production, use a System User access token.
-            </p>
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Phone Number ID</label>
-            <input 
-              type="text" 
-              value={whatsappConfig.phone_number_id}
-              onChange={(e) => setWhatsappConfig({ ...whatsappConfig, phone_number_id: e.target.value })}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:border-amethyst transition-all"
-              placeholder="123456789..."
-            />
-          </div>
-          <div className="flex gap-4">
-            <button 
-              onClick={handleSave}
-              disabled={saving}
-              className="btn-premium flex-1"
-            >
-              {saving ? "Saving..." : "Save Configuration"}
-            </button>
-            <button 
-              onClick={handleTestConnection}
-              disabled={testing}
-              className="px-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-bold hover:bg-white/10 transition-all disabled:opacity-50"
-            >
-              {testing ? "Testing..." : "Test Connection"}
-            </button>
-          </div>
-
-          {testResult && (
-            <div className={cn(
-              "p-6 rounded-2xl border animate-in fade-in slide-in-from-top-4 duration-300",
-              testResult.success ? "bg-emerald-500/10 border-emerald-500/20" : "bg-red-500/10 border-red-500/20"
-            )}>
-              <div className="flex items-center gap-3 mb-4">
-                <div className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center",
-                  testResult.success ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
-                )}>
-                  {testResult.success ? <Check size={16} /> : <AlertCircle size={16} />}
-                </div>
-                <div>
-                  <h4 className="font-bold text-white">
-                    {testResult.success ? "Connection Successful" : `Connection Failed (${testResult.status || 'Error'})`}
-                  </h4>
-                  <p className="text-xs text-soft-lavender/60">
-                    {testResult.success ? "Your WhatsApp API is correctly configured." : "There was an error connecting to the WhatsApp API."}
-                  </p>
-                </div>
-              </div>
-              <div className="bg-black/20 rounded-xl p-4 overflow-x-auto">
-                <pre className="text-[10px] font-mono text-soft-lavender/80">
-                  {JSON.stringify(testResult.success ? testResult.data : testResult.error, null, 2)}
-                </pre>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
       <div className="glass-panel p-10 space-y-8">
         <h3 className="text-xl font-black text-white tracking-tight">WhatsApp Server Configuration</h3>
         <div className="space-y-6">
@@ -4029,7 +3822,7 @@ const handleConnectWhatsApp = () => {
             <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Server URL</label>
             <input 
               type="text" 
-              value="https://techtaire-server-production-ad0b.up.railway.app"
+              value={serverUrl}
               readOnly
               className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-soft-lavender/40 cursor-not-allowed outline-none transition-all"
               placeholder="https://your-server.com"
@@ -4046,53 +3839,52 @@ const handleConnectWhatsApp = () => {
                 {connectionStatus === 'connected' ? "WhatsApp Connected" : connectionStatus === 'waiting' ? "Waiting for Scan" : "Disconnected"}
               </span>
             </div>
-            <button 
-              onClick={handleConnectWhatsApp}
-              disabled={polling || connectionStatus === 'connected'}
-              className="px-6 py-2 bg-royal-purple text-white rounded-xl text-xs font-bold hover:bg-amethyst transition-all disabled:opacity-50"
-            >
-              {polling ? "Polling..." : connectionStatus === 'connected' ? "WhatsApp Connected" : "Connect WhatsApp"}
-            </button>
+            <div className="flex gap-2">
+              {connectionStatus === 'connected' && (
+                <button 
+                  onClick={handleDisconnectWhatsApp}
+                  className="px-6 py-2 bg-red-500/20 text-red-500 rounded-xl text-xs font-bold hover:bg-red-500/30 transition-all"
+                >
+                  Disconnect
+                </button>
+              )}
+              <button 
+                onClick={handleConnectWhatsApp}
+                disabled={connectionStatus === 'connected'}
+                className="px-6 py-2 bg-royal-purple text-white rounded-xl text-xs font-bold hover:bg-amethyst transition-all disabled:opacity-50"
+              >
+                {connectionStatus === 'connected' ? "Connected" : "Connect WhatsApp"}
+              </button>
+            </div>
           </div>
 
-          {(qrLoading || (polling && !qrCode && !qrHtml)) && (
+          {connectionStatus === 'waiting' && (
             <div className="flex flex-col items-center gap-4 p-10 bg-white/5 rounded-3xl border border-white/10">
-              <RefreshCw className="animate-spin text-amethyst" size={40} />
+              {qrCode ? (
+                <div className="bg-white p-2 rounded-xl">
+                  <img src={qrCode} alt="WhatsApp QR Code" className="w-48 h-48" />
+                </div>
+              ) : (
+                <div className="w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center text-amber-500 animate-pulse">
+                  <QrCode size={32} />
+                </div>
+              )}
               <p className="text-sm font-black text-white uppercase tracking-widest text-center">
-                Preparing WhatsApp Server...<br/>
-                <span className="text-[10px] opacity-50">This may take up to 30 seconds</span>
+                Scan QR Required
               </p>
-            </div>
-          )}
-
-          {qrHtml && (
-            <div className="flex flex-col items-center gap-4 p-6 bg-white rounded-3xl overflow-hidden">
-              <p className="text-xs font-black text-deep-night uppercase tracking-widest">Scan QR Code with WhatsApp</p>
-              <div 
-                className="w-full flex justify-center"
-                dangerouslySetInnerHTML={{ __html: qrHtml }} 
-              />
-              <p className="text-[10px] text-deep-night/40 italic text-center">
-                Open WhatsApp &gt; Menu or Settings &gt; Linked Devices &gt; Link a Device
+              <p className="text-xs text-soft-lavender/60 text-center max-w-md">
+                {qrCode ? "Scan this QR code with your WhatsApp app to connect." : "Please visit the server page to scan your QR code and connect WhatsApp."}
               </p>
-            </div>
-          )}
-
-          {qrCode && (
-            <div style={{background:'white', padding:'16px', borderRadius:'12px', display:'inline-block'}}>
-              <p style={{color:'black', textAlign:'center', fontWeight:'bold', marginBottom:'8px'}}>
-                📱 Scan QR Code with WhatsApp
-              </p>
-              <img 
-                src={qrCode} 
-                alt="WhatsApp QR Code" 
-                width={280} 
-                height={280}
-                style={{display:'block'}}
-              />
-              <p style={{color:'gray', textAlign:'center', fontSize:'10px', marginTop:'8px'}}>
-                Open WhatsApp → Linked Devices → Link a Device
-              </p>
+              {!qrCode && (
+                <a 
+                  href="https://techtaire-server-production.up.railway.app" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="inline-block px-6 py-3 bg-amethyst text-white rounded-xl text-xs font-bold hover:bg-royal-purple transition-all mt-2"
+                >
+                  Open Server Page
+                </a>
+              )}
             </div>
           )}
 
@@ -4104,71 +3896,6 @@ const handleConnectWhatsApp = () => {
               <div>
                 <p className="text-white font-bold">✅ WhatsApp Connected</p>
                 <p className="text-xs text-soft-lavender/60">Your server is ready to send messages.</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="glass-panel p-10 space-y-8">
-        <h3 className="text-xl font-black text-white tracking-tight">UltraMsg Configuration</h3>
-        <div className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">UltraMsg API URL</label>
-            <input 
-              type="text" 
-              value={ultramsgConfig.url}
-              onChange={(e) => setUltramsgConfig({ ...ultramsgConfig, url: e.target.value })}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:border-amethyst transition-all"
-              placeholder="https://api.ultramsg.com/instanceXXXXX/"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">UltraMsg Token</label>
-            <input 
-              type="password" 
-              value={ultramsgConfig.token}
-              onChange={(e) => setUltramsgConfig({ ...ultramsgConfig, token: e.target.value })}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:border-amethyst transition-all"
-              placeholder="Enter your UltraMsg token"
-            />
-          </div>
-          <div className="flex gap-4">
-            <button 
-              onClick={handleSaveUltra}
-              className="btn-premium flex-1"
-            >
-              Save Configuration
-            </button>
-            <button 
-              onClick={handleTestUltraMsg}
-              disabled={testingUltra}
-              className="px-6 py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-bold hover:bg-white/10 transition-all disabled:opacity-50"
-            >
-              {testingUltra ? "Testing..." : "Test Connection"}
-            </button>
-          </div>
-
-          {ultraTestResult && (
-            <div className={cn(
-              "p-6 rounded-2xl border animate-in fade-in slide-in-from-top-4 duration-300",
-              ultraTestResult.success ? "bg-emerald-500/10 border-emerald-500/20" : "bg-red-500/10 border-red-500/20"
-            )}>
-              <div className="flex items-center gap-3 mb-4">
-                <div className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center",
-                  ultraTestResult.success ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
-                )}>
-                  {ultraTestResult.success ? <Check size={16} /> : <AlertCircle size={16} />}
-                </div>
-                <div>
-                  <h4 className="font-bold text-white">
-                    {ultraTestResult.success ? "UltraMsg Connected" : `UltraMsg Connection Failed`}
-                  </h4>
-                  <p className="text-xs text-soft-lavender/60">
-                    {ultraTestResult.success ? "Your UltraMsg API is correctly configured." : "There was an error connecting to UltraMsg."}
-                  </p>
-                </div>
               </div>
             </div>
           )}
@@ -4258,6 +3985,7 @@ const handleConnectWhatsApp = () => {
 }
 
 const DashboardView = ({ user, profile, setView }: { user: any, profile: any, setView: (v: View) => void }) => {
+  const getCurrentUserEmail = () => user?.email || user?.uid || 'anonymous';
   const [stats, setStats] = useState({
     totalContacts: 0,
     messagesSent: 0,
@@ -4267,72 +3995,80 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [chartData, setChartData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [qrHtml, setQrHtml] = useState<string | null>(null);
-  const [qrCode, setQrCode] = useState<string | null>(null);
-  const [qrLoading, setQrLoading] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [whatsappStatus, setWhatsappStatus] = useState<'disconnected' | 'waiting' | 'connected'>('disconnected');
+  const [qrCode, setQrCode] = useState<string | null>(null);
 
-const checkWhatsAppStatus = async () => {
-  try {
-    const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
-    const response = await axios.get(`${serverUrl}/status?email=${user?.email}&t=${Date.now()}`, {
-      validateStatus: (status) => status < 400
-    });
-    if (response.data.connected === true) {
-      setWhatsappStatus('connected');
-      setIsConnecting(false);
-      setQrHtml(null);
-      setQrCode(null);
-      localStorage.setItem('techtaire_whatsapp_connected', 'true');
-    } else {
-      setWhatsappStatus('waiting');
+  const checkWhatsAppStatus = async () => {
+    try {
+      const userEmail = getCurrentUserEmail();
+      const status = await wa.getStatus(userEmail);
+      if (status === 'connected') {
+        if (whatsappStatus !== 'connected') {
+          console.log("✅ WhatsApp Connected! Ready to send messages");
+        }
+        setWhatsappStatus('connected');
+        setIsConnecting(false);
+        setQrCode(null);
+        localStorage.setItem('techtaire_whatsapp_connected', 'true');
+      } else {
+        setWhatsappStatus('waiting');
+        localStorage.setItem('techtaire_whatsapp_connected', 'false');
+      }
+    } catch (err: any) {
+      console.error("Failed to check status", err);
+      setWhatsappStatus('disconnected');
       localStorage.setItem('techtaire_whatsapp_connected', 'false');
     }
-  } catch (err) {
-    setWhatsappStatus('disconnected');
-    localStorage.setItem('techtaire_whatsapp_connected', 'false');
-  }
-};
+  };
 
-const fetchQR = async () => {
-  try {
-    const serverUrl = 'https://techtaire-server-production-ad0b.up.railway.app';
-    const response = await axios.get(`${serverUrl}/qr?email=${user?.email}&t=${Date.now()}`, {
-      validateStatus: (status) => status < 400
-    });
-    if (response.data.qr) {
-      const qrData = response.data.qr.startsWith('data:') ? response.data.qr : `data:image/png;base64,${response.data.qr}`;
-      setQrCode(qrData);
-      setQrHtml(null);
-    }
-  } catch (err) {
-    console.error("Failed to fetch QR", err);
-  }
-};
-
-  const handleConnect = () => {
-    setQrLoading(true);
+  const handleConnect = async () => {
     setIsConnecting(true);
-    fetchQR().finally(() => setQrLoading(false));
+    setQrCode(null);
+    try {
+      const userEmail = getCurrentUserEmail();
+      await wa.connectWhatsApp(userEmail);
+      checkWhatsAppStatus();
+    } catch (err: any) {
+      console.error("Failed to connect", err);
+      setIsConnecting(false);
+      alert(`Connection failed: ${err.message}`);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    setWhatsappStatus('disconnected');
+    setIsConnecting(false);
+    setQrCode(null);
+    localStorage.setItem('techtaire_whatsapp_connected', 'false');
+    localStorage.removeItem('wa_token_' + getCurrentUserEmail());
+    console.log("WhatsApp disconnected locally");
   };
 
   useEffect(() => {
     let interval: any;
-    // Always poll for status if we are on dashboard
     interval = setInterval(checkWhatsAppStatus, 5000);
-    checkWhatsAppStatus(); // Initial check
-    
+    checkWhatsAppStatus();
     return () => clearInterval(interval);
   }, [user]);
 
   useEffect(() => {
-    let interval: any;
-    if (isConnecting && whatsappStatus !== 'connected') {
-      interval = setInterval(fetchQR, 10000); // Reduced to 10s
-    }
-    return () => clearInterval(interval);
-  }, [isConnecting, whatsappStatus]);
+    const userEmail = getCurrentUserEmail();
+    const socket = wa.listenForQR(userEmail, (qr) => {
+      setQrCode(qr);
+      setWhatsappStatus('waiting');
+      setIsConnecting(false);
+    }, () => {
+      setWhatsappStatus('connected');
+      setQrCode(null);
+      setIsConnecting(false);
+      localStorage.setItem('techtaire_whatsapp_connected', 'true');
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [user]);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -4459,9 +4195,17 @@ const fetchQR = async () => {
                 <span>Connect WhatsApp</span>
               </button>
             ) : whatsappStatus === 'connected' ? (
-              <div className="flex items-center gap-3 text-emerald-400 font-bold bg-emerald-500/10 px-6 py-3 rounded-2xl border border-emerald-500/20">
-                <Check size={20} />
-                <span>WhatsApp Connected</span>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3 text-emerald-400 font-bold bg-emerald-500/10 px-6 py-3 rounded-2xl border border-emerald-500/20">
+                  <Check size={20} />
+                  <span>WhatsApp Connected</span>
+                </div>
+                <button 
+                  onClick={handleDisconnect}
+                  className="px-6 py-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl font-bold hover:bg-red-500/20 transition-all"
+                >
+                  Disconnect
+                </button>
               </div>
             ) : (
               <div className="flex items-center gap-3 text-amber-400 font-bold">
@@ -4471,45 +4215,49 @@ const fetchQR = async () => {
             )}
           </div>
 
-          <div className="w-full lg:w-[320px] aspect-square glass-panel p-4 flex items-center justify-center bg-white/5 border-white/10 relative overflow-hidden">
-            {qrLoading ? (
+          <div className="w-full lg:w-[320px] aspect-square glass-panel p-6 flex flex-col items-center justify-center bg-white/5 border-white/10 relative overflow-hidden text-center">
+            {whatsappStatus === 'connected' ? (
               <div className="flex flex-col items-center gap-3">
-                <RefreshCw className="animate-spin text-amethyst" size={32} />
-                <p className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Generating QR Code</p>
-              </div>
-            ) : qrHtml ? (
-              <div className="flex flex-col items-center gap-2 w-full h-full">
-                <p className="text-[10px] font-black text-white uppercase tracking-widest">Scan QR Code with WhatsApp</p>
-                <div 
-                  className="w-full h-full flex items-center justify-center bg-white p-2 rounded-xl"
-                  dangerouslySetInnerHTML={{ __html: qrHtml }} 
-                />
-              </div>
-            ) : qrCode ? (
-              <div className="flex flex-col items-center gap-2 w-full h-full">
-                <p className="text-[10px] font-black text-white uppercase tracking-widest">Scan QR Code with WhatsApp</p>
-                <div className="w-full h-full flex items-center justify-center p-2 bg-white rounded-xl">
-                  <img src={qrCode} alt="WhatsApp QR" style={{ width: '280px', height: '280px' }} className="object-contain" />
-                </div>
-              </div>
-            ) : isConnecting && !qrHtml && !qrCode ? (
-              <div className="flex flex-col items-center gap-3">
-                <RefreshCw className="animate-spin text-amethyst" size={32} />
-                <p className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Generating QR Code</p>
-              </div>
-            ) : whatsappStatus === 'connected' ? (
-              <div className="flex flex-col items-center gap-3 text-center p-6">
                 <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-500">
                   <Check size={40} />
                 </div>
-                <p className="text-xs font-black text-emerald-400 uppercase tracking-widest text-center">WhatsApp Connected</p>
+                <p className="text-xs font-black text-emerald-400 uppercase tracking-widest">WhatsApp Connected</p>
+                <p className="text-xs text-soft-lavender/60 mt-2">Ready to send messages</p>
+              </div>
+            ) : isConnecting || whatsappStatus === 'waiting' ? (
+              <div className="flex flex-col items-center gap-4">
+                {qrCode ? (
+                  <div className="bg-white p-2 rounded-xl">
+                    <img src={qrCode} alt="WhatsApp QR Code" className="w-48 h-48" />
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center text-amber-500 animate-pulse">
+                    <QrCode size={32} />
+                  </div>
+                )}
+                <div>
+                  <p className="text-sm font-black text-white uppercase tracking-widest mb-2">Scan QR Required</p>
+                  <p className="text-xs text-soft-lavender/60 mb-4">
+                    {qrCode ? "Scan this QR code with your WhatsApp app to connect." : "Please visit the server page to scan your QR code and connect WhatsApp."}
+                  </p>
+                  {!qrCode && (
+                    <a 
+                      href="https://techtaire-server-production.up.railway.app" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="inline-block px-4 py-2 bg-amethyst text-white rounded-xl text-xs font-bold hover:bg-royal-purple transition-all"
+                    >
+                      Open Server Page
+                    </a>
+                  )}
+                </div>
               </div>
             ) : (
-              <div className="flex flex-col items-center gap-3 text-center p-6">
+              <div className="flex flex-col items-center gap-3">
                 <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center text-soft-lavender/20">
-                  <QrCode size={32} />
+                  <MessageCircle size={32} />
                 </div>
-                <p className="text-[10px] font-black text-soft-lavender/20 uppercase tracking-widest text-center">QR Code will appear here</p>
+                <p className="text-[10px] font-black text-soft-lavender/40 uppercase tracking-widest">Not Connected</p>
               </div>
             )}
           </div>
