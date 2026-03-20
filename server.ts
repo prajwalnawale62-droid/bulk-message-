@@ -493,6 +493,12 @@ async function startServer() {
   // --- WhatsApp Proxy ---
   app.post("/api/whatsapp/proxy", async (req, res) => {
     const { url, method, body, headers } = req.body;
+    console.log(`Proxying ${method} request to ${url}`);
+    
+    if (url === '/api/session/login' || url === '/api/session/register') {
+      body.password = process.env.WHATSAPP_SESSION_PASSWORD;
+    }
+    
     try {
       const response = await axios({
         url: `https://techtaire-server-production.up.railway.app${url}`,
@@ -503,8 +509,10 @@ async function startServer() {
           'Content-Type': 'application/json'
         }
       });
+      console.log(`Proxy success for ${url}:`, response.status);
       res.json(response.data);
     } catch (err: any) {
+      console.error(`Proxy error for ${url}:`, err.response?.status, err.response?.data || err.message);
       res.status(err.response?.status || 500).json(err.response?.data || { message: err.message });
     }
   });

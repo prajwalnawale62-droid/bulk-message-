@@ -69,7 +69,6 @@ import confetti from 'canvas-confetti';
 import { io, Socket } from 'socket.io-client';
 import { AIChatbot } from './components/AIChatbot';
 import * as wa from './lib/whatsapp';
-import * as waApi from './whatsappApi';
 import { 
   LineChart, 
   Line, 
@@ -3232,7 +3231,7 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
         
         if (!token) throw new Error("WhatsApp token not found. Please reconnect.");
         
-        const response = await waApi.sendBulkMessages(token, phones.map(phone => ({ phone, message })));
+        const response = await wa.sendBulk('prajwalnawale3040@gmail.com', phones, message);
         
         successCount = response.sentCount || phones.length;
         failCount = (response.totalCount || phones.length) - successCount;
@@ -4216,7 +4215,11 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
           </div>
 
           <div className="w-full lg:w-[320px] aspect-square glass-panel p-6 flex flex-col items-center justify-center bg-white/5 border-white/10 relative overflow-hidden text-center">
-            {whatsappStatus === 'connected' ? (
+            {qrCode ? (
+              <div className="bg-white p-2 rounded-xl">
+                <img src={qrCode} alt="WhatsApp QR Code" className="w-48 h-48" />
+              </div>
+            ) : whatsappStatus === 'connected' ? (
               <div className="flex flex-col items-center gap-3">
                 <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-500">
                   <Check size={40} />
@@ -4226,30 +4229,14 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
               </div>
             ) : isConnecting || whatsappStatus === 'waiting' ? (
               <div className="flex flex-col items-center gap-4">
-                {qrCode ? (
-                  <div className="bg-white p-2 rounded-xl">
-                    <img src={qrCode} alt="WhatsApp QR Code" className="w-48 h-48" />
-                  </div>
-                ) : (
-                  <div className="w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center text-amber-500 animate-pulse">
-                    <QrCode size={32} />
-                  </div>
-                )}
+                <div className="w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center text-amber-500 animate-pulse">
+                  <QrCode size={32} />
+                </div>
                 <div>
-                  <p className="text-sm font-black text-white uppercase tracking-widest mb-2">Scan QR Required</p>
+                  <p className="text-sm font-black text-white uppercase tracking-widest mb-2">Waiting for QR</p>
                   <p className="text-xs text-soft-lavender/60 mb-4">
-                    {qrCode ? "Scan this QR code with your WhatsApp app to connect." : "Please visit the server page to scan your QR code and connect WhatsApp."}
+                    Please wait while we generate your QR code...
                   </p>
-                  {!qrCode && (
-                    <a 
-                      href="https://techtaire-server-production.up.railway.app" 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="inline-block px-4 py-2 bg-amethyst text-white rounded-xl text-xs font-bold hover:bg-royal-purple transition-all"
-                    >
-                      Open Server Page
-                    </a>
-                  )}
                 </div>
               </div>
             ) : (
