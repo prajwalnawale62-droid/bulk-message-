@@ -1,14 +1,34 @@
 import { io, Socket } from 'socket.io-client';
 
 export const getServerUrl = () => {
-  if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem('whatsapp_server_url');
-    if (stored) {
-      return stored.replace(/\/$/, '');
-    }
+  if (typeof window === 'undefined') return '';
+  
+  const stored = localStorage.getItem('whatsapp_server_url');
+  if (!stored) return window.location.origin;
+
+  // If running on AI Studio, always use relative URLs to avoid cross-environment issues
+  if (window.location.hostname.includes('.run.app')) {
+    console.warn("Ignoring whatsapp_server_url because app is running on AI Studio. Using relative URL.");
     return window.location.origin;
   }
-  return '';
+
+  // Ignore if it's localhost and we are not on localhost
+  if (!window.location.hostname.includes('localhost') && stored.includes('localhost')) {
+    console.warn("Ignoring localhost whatsapp_server_url because app is not running on localhost");
+    return window.location.origin;
+  }
+
+  // Ignore if it contains the current hostname
+  if (stored.includes(window.location.hostname)) {
+    console.warn("Ignoring whatsapp_server_url because it matches current hostname. Using relative URL.");
+    return window.location.origin;
+  }
+
+  const cleanUrl = stored.replace(/\/$/, '');
+  if (cleanUrl.endsWith('/api/whatsapp-server')) {
+    return cleanUrl.replace('/api/whatsapp-server', '');
+  }
+  return cleanUrl;
 };
 
 let socket: Socket | null = null;

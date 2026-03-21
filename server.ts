@@ -23,6 +23,7 @@ import {
 } from './src/services/emailTemplates';
 import rateLimit from "express-rate-limit";
 import { createClient } from "@supabase/supabase-js";
+import cors from "cors";
 
 dotenv.config();
 
@@ -87,6 +88,8 @@ const getTransporter = () => {
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  app.use(cors());
 
   // Rate Limiting
   const limiter = rateLimit({
@@ -210,6 +213,7 @@ async function startServer() {
 
   // --- WhatsApp Local Backend ---
   app.post("/api/whatsapp-server/session/start", async (req, res) => {
+    console.log("Hit /api/whatsapp-server/session/start route");
     try {
       const { userId } = req.body;
       if (!userId) return res.status(400).json({ error: "userId is required" });
