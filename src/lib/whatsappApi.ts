@@ -3,8 +3,13 @@ import axios from 'axios';
 const BASE_URL = "/api/whatsapp-server";
 
 export async function startSession(userId: string) {
-  const response = await axios.post(`${BASE_URL}/session/start`, { userId });
-  return response.data;
+  try {
+    const response = await axios.post(`${BASE_URL}/session/start`, { userId });
+    return response.data;
+  } catch (error: any) {
+    console.error('Error starting session:', error.response?.data || error.message);
+    throw error;
+  }
 }
 
 export async function sendMessages(userId: string, messages: {number: string, message: string}[], attachmentUrl?: string | null) {
@@ -17,18 +22,40 @@ export async function sendMessages(userId: string, messages: {number: string, me
     payload.mediaUrl = attachmentUrl;
   }
 
-  const response = await axios.post(`${BASE_URL}/messages/send`, payload);
-  return response.data;
+  try {
+    const response = await axios.post(`${BASE_URL}/messages/send`, payload);
+    return response.data;
+  } catch (error: any) {
+    console.error('Error sending messages:', error.response?.data || error.message);
+    throw error;
+  }
 }
 
 export async function getStats(userId: string) {
-  const response = await axios.get(`${BASE_URL}/messages/stats/${userId}`);
-  return response.data;
+  try {
+    const response = await axios.get(`${BASE_URL}/messages/stats/${userId}`);
+    return response.data;
+  } catch (error: any) {
+    // If session not found, return empty stats instead of throwing
+    if (error.response?.status === 404) {
+      return { sent: 0, delivered: 0, failed: 0 };
+    }
+    console.error('Error getting stats:', error.response?.data || error.message);
+    return { sent: 0, delivered: 0, failed: 0 };
+  }
 }
 
 export async function getStatus(userId: string) {
-  const response = await axios.get(`${BASE_URL}/session/status/${userId}`);
-  return response.data.status;
+  try {
+    const response = await axios.get(`${BASE_URL}/session/status/${userId}`);
+    return response.data.status;
+  } catch (error: any) {
+    if (error.response?.status === 404) {
+      return 'disconnected';
+    }
+    console.error('Error getting status:', error.response?.data || error.message);
+    return 'error';
+  }
 }
 
 export async function logoutSession(userId: string) {

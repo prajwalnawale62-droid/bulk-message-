@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Loader2, CheckCircle2, AlertCircle, Power } from 'lucide-react';
 import { startSession, formatQrData } from '../lib/whatsappApi';
-import { connectSocket, joinRoom, getSocket, disconnectSocket, onSocketEvent, offSocketEvent } from '../lib/socketManager';
+import { connectSocket, joinRoom, disconnectSocket, onSocketEvent, offSocketEvent } from '../lib/socketManager';
 
 interface WhatsAppConnectProps {
   userId: string;
@@ -15,6 +15,7 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
   const handleQr = useCallback((data: any) => {
     console.log('QR event received:', data);
     const qr = typeof data === 'string' ? data : data.qr;
+
     if (qr) {
       setQrCode(formatQrData(qr));
       setStatus('qr');
@@ -60,35 +61,42 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
     setStatus('loading');
     setError(null);
     console.log('Initializing WhatsApp session for user:', userId);
-    
+
     try {
-      // 1. Initialize Socket FIRST and add listeners
+      // 1. Socket connect karo
       connectSocket(userId);
-      console.log('Socket initialized, joining room for:', userId);
-      
-      // Add listeners immediately
+      console.log('Socket initialized');
+
+      // 2. Room join karo
+      joinRoom(userId);
+
+      // 3. Socket listeners add karo
       onSocketEvent('qr', handleQr);
       onSocketEvent('connected', handleConnected);
       onSocketEvent('session_status', handleSessionStatus);
       onSocketEvent('disconnected', handleDisconnected);
       onSocketEvent('connect_error', handleConnectError);
 
-      // 2. NOW start the session
+      // 4. Session start karo
       console.log('Starting session via API...');
       await startSession(userId);
       console.log('Session start API call completed');
-      
-    } catch (err) {
+
+    } catch (err: any) {
       console.error('Failed to initialize WhatsApp session:', err);
-      setError('Failed to initialize WhatsApp session. Please try again.');
+      if (err.response?.status === 429) {
+        setError('Too many requests. Please wait a minute and try again.');
+      } else {
+        setError('Failed to initialize WhatsApp session. Please try again.');
+      }
       setStatus('error');
     }
   };
 
   useEffect(() => {
     initSession();
+
     return () => {
-      // Cleanup listeners on unmount
       offSocketEvent('qr', handleQr);
       offSocketEvent('connected', handleConnected);
       offSocketEvent('session_status', handleSessionStatus);
@@ -98,7 +106,6 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
   }, [userId, handleQr, handleConnected, handleSessionStatus, handleDisconnected, handleConnectError]);
 
   const handleDisconnect = async () => {
-    // Implement logout logic if needed, or just disconnect
     disconnectSocket();
     setStatus('disconnected');
     localStorage.setItem('techtaire_whatsapp_connected', 'false');
@@ -112,28 +119,37 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
           <p className="text-white font-bold">Generating QR Code...</p>
         </>
       )}
+
       {status === 'qr' && qrCode && (
         <>
           <div className="bg-white p-2 rounded-xl">
             <img src={qrCode} alt="WhatsApp QR Code" className="w-64 h-64" />
           </div>
-          <p className="text-soft-lavender/60 text-sm">Scan with WhatsApp → Linked Devices</p>
+          <p className="text-soft-lavender/60 text-sm">
+            Scan with WhatsApp → Linked Devices
+          </p>
         </>
       )}
+
       {status === 'connected' && (
         <>
           <CheckCircle2 className="text-emerald-500" size={48} />
           <p className="text-emerald-500 font-bold">WhatsApp Connected!</p>
+
           <button onClick={handleDisconnect} className="btn-danger flex items-center gap-2">
             <Power size={16} /> Disconnect
           </button>
         </>
       )}
+
       {status === 'error' && (
         <>
           <AlertCircle className="text-red-500" size={48} />
           <p className="text-red-500 font-bold">{error}</p>
-          <button onClick={initSession} className="btn-primary">Retry</button>
+
+          <button onClick={initSession} className="btn-primary">
+            Retry
+          </button>
         </>
       )}
     </div>

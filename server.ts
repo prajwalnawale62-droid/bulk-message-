@@ -190,10 +190,8 @@ async function startServer() {
   // --- WhatsApp Railway Server Proxy ---
   app.all("/api/whatsapp-server/:path(*)", async (req, res) => {
     const path = req.params.path;
-    console.log(`Proxying ${req.method} request to ${path}`);
     const serverUrl = 'https://techtaire1-production.up.railway.app';
     const url = `${serverUrl}/${path}`;
-    console.log(`Target URL: ${url}`);
     
     try {
       // Filter out headers that might cause issues
@@ -219,12 +217,17 @@ async function startServer() {
       });
 
       if (response.status >= 400) {
-        console.error(`WhatsApp Server Proxy Error (${response.status}) for ${path}:`, JSON.stringify(response.data));
+        console.error(`WhatsApp Proxy Error (${response.status}) for ${path}:`, JSON.stringify(response.data));
+      }
+
+      // If the backend returns 429, pass it through to the client
+      if (response.status === 429) {
+        console.warn(`WhatsApp Proxy: Too many requests for ${path}`);
       }
 
       res.status(response.status).json(response.data);
     } catch (error: any) {
-      console.error(`Railway Server Proxy Error (${path}):`, error.response?.data || error.message);
+      console.error(`WhatsApp Proxy Exception (${path}):`, error.message);
       res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
     }
   });
