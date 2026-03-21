@@ -7,8 +7,17 @@ export async function startSession(userId: string) {
   return response.data;
 }
 
-export async function sendMessages(userId: string, messages: {number: string, message: string}[]) {
-  const response = await axios.post(`${BASE_URL}/messages/send`, { userId, messages });
+export async function sendMessages(userId: string, messages: {number: string, message: string}[], attachmentUrl?: string | null) {
+  const payload: any = { 
+    userId, 
+    messages
+  };
+  
+  if (attachmentUrl) {
+    payload.mediaUrl = attachmentUrl;
+  }
+
+  const response = await axios.post(`${BASE_URL}/messages/send`, payload);
   return response.data;
 }
 

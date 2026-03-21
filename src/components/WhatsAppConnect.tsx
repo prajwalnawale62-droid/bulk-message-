@@ -37,6 +37,7 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
         console.log('Connected event received');
         setStatus('connected');
         setQrCode(null);
+        localStorage.setItem('techtaire_whatsapp_connected', 'true');
       });
 
       onSocketEvent('session_status', (data: any) => {
@@ -44,9 +45,11 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
         if (data.status === 'connected') {
           setStatus('connected');
           setQrCode(null);
+          localStorage.setItem('techtaire_whatsapp_connected', 'true');
         } else if (data.status === 'disconnected') {
           setStatus('disconnected');
           setQrCode(null);
+          localStorage.setItem('techtaire_whatsapp_connected', 'false');
         }
       });
 
@@ -54,6 +57,7 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
         console.log('Disconnected event received');
         setStatus('disconnected');
         setQrCode(null);
+        localStorage.setItem('techtaire_whatsapp_connected', 'false');
       });
       
       onSocketEvent('connect_error', (err: any) => {
@@ -79,6 +83,7 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
     // Implement logout logic if needed, or just disconnect
     disconnectSocket();
     setStatus('disconnected');
+    localStorage.setItem('techtaire_whatsapp_connected', 'false');
   };
 
   return (

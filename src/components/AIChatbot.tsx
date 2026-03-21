@@ -91,20 +91,24 @@ export const AIChatbot = ({ user }: { user: any }) => {
       console.log('Connected event received');
       setIsConnected(true);
       setQrCode(null);
+      localStorage.setItem('techtaire_whatsapp_connected', 'true');
     });
 
     onSocketEvent('disconnected', () => {
       console.log('Disconnected event received');
       setIsConnected(false);
       setQrCode(null);
+      localStorage.setItem('techtaire_whatsapp_connected', 'false');
     });
 
     onSocketEvent('session_status', (data: any) => {
       if (data.status === 'connected') {
         setIsConnected(true);
         setQrCode(null);
+        localStorage.setItem('techtaire_whatsapp_connected', 'true');
       } else {
         setIsConnected(false);
+        localStorage.setItem('techtaire_whatsapp_connected', 'false');
       }
     });
 

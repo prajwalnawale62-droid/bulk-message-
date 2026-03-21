@@ -90,10 +90,12 @@ async function startServer() {
 
   // Use raw body for webhook signature verification
   app.use(express.json({
+    limit: '50mb',
     verify: (req: any, res, buf) => {
       req.rawBody = buf;
     }
   }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // --- Email System ---
   app.post("/api/email/send", async (req, res) => {
@@ -215,6 +217,11 @@ async function startServer() {
         timeout: 30000, // 30s timeout
         validateStatus: (status) => true, // Accept all status codes
       });
+
+      if (response.status >= 400) {
+        console.error(`WhatsApp Server Proxy Error (${response.status}) for ${path}:`, JSON.stringify(response.data));
+      }
+
       res.status(response.status).json(response.data);
     } catch (error: any) {
       console.error(`Railway Server Proxy Error (${path}):`, error.response?.data || error.message);
@@ -518,6 +525,109 @@ async function startServer() {
       res.status(err.response?.status || 500).json(err.response?.data || { message: err.message });
     }
   });
+
+  // --- Campaign Scheduler ---
+  const processScheduledCampaigns = async () => {
+    const supabaseAdmin = getSupabaseAdmin();
+    if (!supabaseAdmin) return;
+
+    try {
+      const now = new Date().toISOString();
+      // Fetch scheduled campaigns that are due
+      const { data: campaigns, error } = await supabaseAdmin
+        .from('campaigns')
+        .select('*')
+        .eq('status', 'scheduled')
+        .lte('scheduled_at', now);
+
+      if (error) {
+        console.error("Error fetching scheduled campaigns:", error);
+        return;
+      }
+
+      if (!campaigns || campaigns.length === 0) return;
+
+      console.log(`Processing ${campaigns.length} scheduled campaigns...`);
+
+      for (const campaign of campaigns) {
+        try {
+          // Update status to sending to avoid duplicate processing
+          await supabaseAdmin
+            .from('campaigns')
+            .update({ status: 'sending' })
+            .eq('id', campaign.id);
+
+          // Get user's email for the session ID
+          const { data: profile } = await supabaseAdmin
+            .from('profiles')
+            .select('email')
+            .eq('id', campaign.user_id)
+            .single();
+
+          const userEmail = profile?.email;
+          if (!userEmail) {
+            console.error(`No email found for user ${campaign.user_id}`);
+            await supabaseAdmin.from('campaigns').update({ status: 'failed' }).eq('id', campaign.id);
+            continue;
+          }
+
+          // Fetch contacts for the campaign
+          let query = supabaseAdmin
+            .from('contacts')
+            .select('whatsapp_number')
+            .eq('user_id', campaign.user_id);
+          
+          if (campaign.batch && campaign.batch !== 'all') {
+            query = query.eq('batch', campaign.batch);
+          }
+
+          const { data: contacts } = await query;
+
+          if (!contacts || contacts.length === 0) {
+            console.warn(`No contacts found for campaign ${campaign.id}`);
+            await supabaseAdmin.from('campaigns').update({ status: 'completed', sent_messages: 0 }).eq('id', campaign.id);
+            continue;
+          }
+
+          // Clean numbers and format messages
+          const messages = contacts.map((c: any) => ({
+            number: c.whatsapp_number.replace(/\D/g, ''),
+            message: campaign.message_template
+          })).filter((c: any) => c.number);
+
+          // Send messages via Railway server
+          const serverUrl = 'https://techtaire1-production.up.railway.app';
+          await axios.post(`${serverUrl}/messages/send`, {
+            userId: userEmail,
+            messages,
+            mediaUrl: campaign.attachment_url
+          });
+
+          // Update status to completed
+          await supabaseAdmin
+            .from('campaigns')
+            .update({ 
+              status: 'completed',
+              sent_messages: messages.length
+            })
+            .eq('id', campaign.id);
+
+          console.log(`Campaign ${campaign.id} processed successfully.`);
+        } catch (err: any) {
+          console.error(`Error processing campaign ${campaign.id}:`, err.message);
+          await supabaseAdmin
+            .from('campaigns')
+            .update({ status: 'failed' })
+            .eq('id', campaign.id);
+        }
+      }
+    } catch (err: any) {
+      console.error("Scheduler error:", err.message);
+    }
+  };
+
+  // Run scheduler every minute
+  setInterval(processScheduledCampaigns, 60000);
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

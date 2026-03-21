@@ -3159,7 +3159,7 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
         await supabase.from('campaigns').insert([{
           user_id: user.id,
           name: `Scheduled Campaign ${new Date().toLocaleString()}`,
-          message,
+          message_template: message,
           status: 'scheduled',
           scheduled_at: scheduledAt.toISOString(),
           batch: selectedBatch,
@@ -3205,10 +3205,16 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
           message: message
         })).filter(c => c.number);
         
+        if (messages.length === 0) {
+          alert("No valid WhatsApp numbers found in the selected batch.");
+          setSending(false);
+          return;
+        }
+        
         setSendingProgress(`Sending bulk to ${messages.length} contacts...`);
         
         // Join room for real-time updates
-        joinRoom(user.id);
+        joinRoom(user.email);
         const socket = getSocket();
         
         socket?.on('message_sent', (data: any) => {
@@ -3229,33 +3235,33 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
           setSendingProgress('');
         });
 
-        await sendMessages(user.id, messages);
+        await sendMessages(user.email, messages, attachmentPreview);
         
+        // 3. Log campaign
+        await supabase.from('campaigns').insert([{
+          user_id: user.id,
+          name: `Campaign ${new Date().toLocaleString()}`,
+          message_template: message,
+          status: 'completed',
+          batch: selectedBatch,
+          attachment_url: attachmentPreview,
+          total_messages: contacts.length,
+          sent_messages: contacts.length
+        }]);
+        
+        showNotify("Campaign sent successfully!", "success");
+        
+        setMessage('');
+        setAttachment(null);
+        setAttachmentPreview(null);
+        setSendingProgress('');
       } catch (err: any) {
         console.error("Failed to send", err);
         showNotify(`Failed to send: ${err.message}`, "error");
         setSending(false);
         setSendingProgress('');
+        return;
       }
-
-      // 3. Log campaign
-      await supabase.from('campaigns').insert([{
-        user_id: user.id,
-        name: `Campaign ${new Date().toLocaleString()}`,
-        message,
-        status: 'completed',
-        batch: selectedBatch,
-        attachment_url: attachmentPreview,
-        total_messages: contacts.length,
-        sent_messages: contacts.length
-      }]);
-      
-      showNotify("Campaign sent successfully!", "success");
-      
-      setMessage('');
-      setAttachment(null);
-      setAttachmentPreview(null);
-      setSendingProgress('');
     } catch (error: any) {
       alert("Failed to start campaign: " + error.message);
     } finally {
@@ -3851,7 +3857,7 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const stats = await getStats(user.id);
+        const stats = await getStats(user.email);
         setWaStats(stats);
       } catch (e) {
         console.error(e);
