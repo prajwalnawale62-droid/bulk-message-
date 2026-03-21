@@ -741,6 +741,29 @@ export default function App() {
   const [toasts, setToasts] = useState<{ id: number, message: string, type: 'success' | 'error' | 'info' | 'warning' }[]>([]);
   const [legalModal, setLegalModal] = useState<'privacy' | 'terms' | 'copyright' | null>(null);
 
+  const [isWhatsappConnected, setIsWhatsappConnected] = useState(false);
+
+  useEffect(() => {
+    // Initial check
+    setIsWhatsappConnected(localStorage.getItem('techtaire_whatsapp_connected') === 'true');
+
+    // Listen for storage changes (in case it's updated from another tab or component)
+    const handleStorageChange = () => {
+      setIsWhatsappConnected(localStorage.getItem('techtaire_whatsapp_connected') === 'true');
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Also set up an interval to check periodically since localStorage changes in the same window
+    // don't trigger the 'storage' event
+    const interval = setInterval(handleStorageChange, 1000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, []);
+
   const showNotify = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { id, message, type }]);
@@ -1254,7 +1277,7 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
                 >
                   {view === 'dashboard' && <DashboardView user={user} profile={profile} setView={setView} />}
                   {view === 'contacts' && <ContactsView user={user} showNotify={showNotify} />}
-                  {view === 'messaging' && <MessagingView profile={profile} user={user} showNotify={showNotify} />}
+                  {view === 'messaging' && <MessagingView profile={profile} user={user} showNotify={showNotify} isWhatsappConnected={isWhatsappConnected} />}
                   {view === 'history' && <HistoryView user={user} showNotify={showNotify} />}
                   {view === 'guide' && <GuideView setView={setView} />}
                   {view === 'plans' && <PricingPage setView={setView} isDashboard onSelect={handlePayment} currentPlan={profile?.plan} />}
@@ -3003,7 +3026,7 @@ function ContactsView({ user, showNotify }: { user: any, showNotify: (m: string,
   );
 }
 
-function MessagingView({ profile, user, showNotify }: { profile: any, user: any, showNotify: (m: string, t?: 'success' | 'error' | 'info' | 'warning') => void }) {
+function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { profile: any, user: any, showNotify: (m: string, t?: 'success' | 'error' | 'info' | 'warning') => void, isWhatsappConnected: boolean }) {
   const getCurrentUserEmail = () => user?.email || user?.uid || 'anonymous';
   const [message, setMessage] = useState('');
   const [isEnhancing, setIsEnhancing] = useState(false);
@@ -3130,11 +3153,7 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
     if (!message && !attachment) return;
     if (!user) return;
     
-    const isConnected = localStorage.getItem('techtaire_whatsapp_connected') === 'true';
-    const server = JSON.parse(localStorage.getItem('techtaire_server_config') || '{"url":"/api/whatsapp-server"}');
-    const hasServer = server && server.url && isConnected;
-
-    if (!hasServer) {
+    if (!isWhatsappConnected) {
       alert("Please connect WhatsApp first");
       return;
     }
@@ -3452,11 +3471,16 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
               </div>
             <button 
               onClick={handleSend}
-              disabled={sending || (!message && !attachment) || isExpired}
+              disabled={sending || (!message && !attachment) || isExpired || !isWhatsappConnected}
               className="btn-premium flex items-center gap-3 px-10 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={!isWhatsappConnected ? "Please connect WhatsApp first" : ""}
             >
               {sending ? <RefreshCw className="animate-spin" size={20} /> : <SendHorizontal size={20} />}
-              <span>{sending ? (sendingProgress || "Sending...") : "Send Campaign"}</span>
+              <span>
+                {sending ? (sendingProgress || "Sending...") : 
+                 !isWhatsappConnected ? "Connect WhatsApp First" : 
+                 "Send Campaign"}
+              </span>
             </button>
           </div>
           
@@ -3743,7 +3767,22 @@ function HistoryView({ user, showNotify }: { user: any, showNotify: (m: string, 
 }
 
 function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { user: any, profile: any, onUpdate: () => void, onOpenModal: (type: any) => void, showNotify: (m: string, t?: 'success' | 'error' | 'info' | 'warning') => void }) {
-  const serverUrl = '/api/whatsapp-server';
+  const [serverUrl, setServerUrl] = useState(() => {
+    return localStorage.getItem('whatsapp_server_url') || '';
+  });
+
+  const handleSaveUrl = () => {
+    if (serverUrl.trim()) {
+      localStorage.setItem('whatsapp_server_url', serverUrl.trim());
+      showNotify('Server URL saved successfully', 'success');
+      // Force reload to apply new socket URL
+      setTimeout(() => window.location.reload(), 1000);
+    } else {
+      localStorage.removeItem('whatsapp_server_url');
+      showNotify('Server URL reset to default', 'info');
+      setTimeout(() => window.location.reload(), 1000);
+    }
+  };
 
   return (
     <div className="max-w-2xl space-y-8">
@@ -3752,18 +3791,26 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
         <div className="space-y-6">
           <div className="space-y-2">
             <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Server URL</label>
-            <input 
-              type="text" 
-              value={serverUrl}
-              readOnly
-              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-soft-lavender/40 cursor-not-allowed outline-none transition-all"
-              placeholder="https://your-server.com"
-            />
+            <div className="flex gap-4">
+              <input 
+                type="text" 
+                value={serverUrl}
+                onChange={(e) => setServerUrl(e.target.value)}
+                className="flex-1 bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none transition-all focus:border-amethyst focus:ring-1 focus:ring-amethyst"
+                placeholder="https://your-server.com (Leave empty for default)"
+              />
+              <button
+                onClick={handleSaveUrl}
+                className="btn-primary py-4 px-8 rounded-2xl"
+              >
+                Save
+              </button>
+            </div>
           </div>
           
           <div className="p-6 bg-white/5 rounded-2xl border border-white/10">
             <p className="text-sm text-soft-lavender/80">
-              WhatsApp connection is managed from the dashboard.
+              WhatsApp connection is managed from the dashboard. Changing the server URL will reload the page.
             </p>
           </div>
         </div>
@@ -3981,7 +4028,7 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
             <p className="text-soft-lavender/60 text-sm max-w-md">
               Connect your WhatsApp account to start sending automated campaigns and messages directly from the dashboard.
             </p>
-            <WhatsAppConnect userId={user.email} />
+            <WhatsAppConnect userId={user?.email || 'anonymous'} />
           </div>
           <div className="w-full lg:w-[320px] aspect-square glass-panel p-6 flex flex-col items-center justify-center bg-white/5 border-white/10 relative overflow-hidden text-center">
             <div className="absolute inset-0 bg-gradient-to-br from-amethyst/10 to-transparent opacity-50" />

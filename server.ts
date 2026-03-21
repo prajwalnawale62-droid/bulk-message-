@@ -1,5 +1,15 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
+import { Server as SocketIOServer } from "socket.io";
+import { createServer } from "http";
+import { 
+  initWhatsAppService, 
+  startWhatsAppSession, 
+  getWhatsAppStatus, 
+  getWhatsAppStats, 
+  sendWhatsAppMessage, 
+  logoutWhatsAppSession 
+} from './src/services/whatsappService';
 import axios from "axios";
 import dotenv from "dotenv";
 import crypto from "crypto";
@@ -187,51 +197,86 @@ async function startServer() {
     }
   });
 
-  // --- WhatsApp Railway Server Proxy ---
-  app.all("/api/whatsapp-server/:path(*)", async (req, res) => {
-    const path = req.params.path;
-    const serverUrl = 'https://techtaire1-production.up.railway.app';
-    const url = `${serverUrl}/${path}`;
-    
+  const httpServer = createServer(app);
+  const io = new SocketIOServer(httpServer, {
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"]
+    }
+  });
+
+  // Initialize WhatsApp Socket Service
+  initWhatsAppService(io);
+
+  // --- WhatsApp Local Backend ---
+  app.post("/api/whatsapp-server/session/start", async (req, res) => {
     try {
-      // Filter out headers that might cause issues
-      const headers = { ...req.headers };
-      delete headers.host;
-      delete headers.connection;
-      delete headers['content-length'];
+      const { userId } = req.body;
+      if (!userId) return res.status(400).json({ error: "userId is required" });
       
-      // Disable caching to avoid 304 responses
-      headers['cache-control'] = 'no-cache';
-      headers['pragma'] = 'no-cache';
-      headers['if-none-match'] = '';
-      headers['if-modified-since'] = '';
+      const result = await startWhatsAppSession(userId, io);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error starting session:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
 
-      const response = await axios({
-        method: req.method,
-        url: url,
-        data: req.body,
-        params: req.query,
-        headers: headers,
-        timeout: 30000, // 30s timeout
-        validateStatus: (status) => true, // Accept all status codes
-      });
+  app.get("/api/whatsapp-server/session/status/:userId", (req, res) => {
+    try {
+      const { userId } = req.params;
+      const status = getWhatsAppStatus(userId);
+      res.json({ status });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
 
-      if (response.status >= 400) {
-        // Suppress 404 for stats as it's common when session isn't initialized yet
-        if (!(response.status === 404 && path.includes('stats'))) {
-          console.error(`WhatsApp Proxy Error (${response.status}) for ${path}:`, JSON.stringify(response.data));
+  app.get("/api/whatsapp-server/messages/stats/:userId", (req, res) => {
+    try {
+      const { userId } = req.params;
+      const stats = getWhatsAppStats(userId);
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/whatsapp-server/messages/send", async (req, res) => {
+    try {
+      const { userId, messages, mediaUrl } = req.body;
+      if (!userId || !messages || !Array.isArray(messages)) {
+        return res.status(400).json({ error: "Invalid payload" });
+      }
+
+      const results = [];
+      for (const msg of messages) {
+        try {
+          // Add mediaUrl handling here if needed
+          await sendWhatsAppMessage(userId, msg.number, msg.message);
+          results.push({ number: msg.number, status: 'sent' });
+        } catch (error: any) {
+          results.push({ number: msg.number, status: 'failed', error: error.message });
         }
       }
 
-      // If the backend returns 429, pass it through to the client
-      if (response.status === 429) {
-        console.warn(`WhatsApp Proxy: Too many requests for ${path}`);
-      }
-
-      res.status(response.status).json(response.data);
+      res.json({ success: true, results });
     } catch (error: any) {
-      console.error(`WhatsApp Proxy Exception (${path}):`, error.message);
-      res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
+      console.error("Error sending messages:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/whatsapp-server/session/logout", async (req, res) => {
+    try {
+      const { userId } = req.body;
+      if (!userId) return res.status(400).json({ error: "userId is required" });
+      
+      const result = await logoutWhatsAppSession(userId, io);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error logging out:", error);
+      res.status(500).json({ error: error.message });
     }
   });
 
@@ -601,13 +646,14 @@ async function startServer() {
             message: campaign.message_template
           })).filter((c: any) => c.number);
 
-          // Send messages via Railway server
-          const serverUrl = 'https://techtaire1-production.up.railway.app';
-          await axios.post(`${serverUrl}/messages/send`, {
-            userId: userEmail,
-            messages,
-            mediaUrl: campaign.attachment_url
-          });
+          // Send messages via local WhatsApp service
+          for (const msg of messages) {
+            try {
+              await sendWhatsAppMessage(userEmail, msg.number, msg.message);
+            } catch (err: any) {
+              console.error(`Failed to send message to ${msg.number}:`, err.message);
+            }
+          }
 
           // Update status to completed
           await supabaseAdmin
@@ -649,7 +695,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }

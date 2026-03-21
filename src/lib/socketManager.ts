@@ -1,10 +1,21 @@
 import { io, Socket } from 'socket.io-client';
 
-const SERVER_URL = 'https://techtaire1-production.up.railway.app';
+export const getServerUrl = () => {
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('whatsapp_server_url');
+    if (stored) {
+      return stored.replace(/\/$/, '');
+    }
+    return window.location.origin;
+  }
+  return '';
+};
+
 let socket: Socket | null = null;
 
 export const connectSocket = (userId?: string) => {
   if (!socket) {
+    const SERVER_URL = getServerUrl();
     console.log('Connecting socket to', SERVER_URL);
     socket = io(SERVER_URL, {
       reconnection: true,

@@ -1,22 +1,35 @@
 import axios from 'axios';
 
-const WHATSAPP_SERVER_URL = 'https://techtaire1-production.up.railway.app';
-const BASE_URL = typeof window !== 'undefined' && 
-  (window.location.hostname.includes('localhost') || window.location.hostname.includes('run.app')) 
-  ? "/api/whatsapp-server" 
-  : WHATSAPP_SERVER_URL;
+export function getBaseUrl() {
+  const stored = localStorage.getItem('whatsapp_server_url');
+  if (stored) {
+    return `${stored.replace(/\/$/, '')}/api/whatsapp-server`;
+  }
+  return "/api/whatsapp-server";
+}
 
 export async function startSession(userId: string) {
+  const BASE_URL = getBaseUrl();
+  console.log(`Calling startSession for ${userId} at ${BASE_URL}/session/start`);
   try {
-    const response = await axios.post(`${BASE_URL}/session/start`, { userId });
+    const response = await axios.post(`${BASE_URL}/session/start`, { userId }, {
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      timeout: 15000
+    });
     return response.data;
   } catch (error: any) {
+    if (error.message === 'Network Error') {
+      console.error('WhatsApp API Network Error: This usually means a CORS issue or the server is down. URL:', `${BASE_URL}/session/start`);
+    }
     console.error('Error starting session:', error.response?.data || error.message);
     throw error;
   }
 }
 
 export async function sendMessages(userId: string, messages: {number: string, message: string}[], attachmentUrl?: string | null) {
+  const BASE_URL = getBaseUrl();
   const payload: any = { 
     userId, 
     messages
@@ -36,8 +49,9 @@ export async function sendMessages(userId: string, messages: {number: string, me
 }
 
 export async function getStats(userId: string) {
+  const BASE_URL = getBaseUrl();
   try {
-    const response = await axios.get(`${BASE_URL}/messages/stats/${userId}`);
+    const response = await axios.get(`${BASE_URL}/messages/stats/${encodeURIComponent(userId)}`);
     return response.data;
   } catch (error: any) {
     // If session not found, return empty stats instead of throwing
@@ -50,8 +64,9 @@ export async function getStats(userId: string) {
 }
 
 export async function getStatus(userId: string) {
+  const BASE_URL = getBaseUrl();
   try {
-    const response = await axios.get(`${BASE_URL}/session/status/${userId}`);
+    const response = await axios.get(`${BASE_URL}/session/status/${encodeURIComponent(userId)}`);
     return response.data.status;
   } catch (error: any) {
     if (error.response?.status === 404) {
@@ -63,6 +78,7 @@ export async function getStatus(userId: string) {
 }
 
 export async function logoutSession(userId: string) {
+  const BASE_URL = getBaseUrl();
   const response = await axios.post(`${BASE_URL}/session/logout`, { userId });
   return response.data;
 }
