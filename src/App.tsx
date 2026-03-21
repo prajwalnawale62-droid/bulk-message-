@@ -68,7 +68,9 @@ import Papa from 'papaparse';
 import confetti from 'canvas-confetti';
 import { io, Socket } from 'socket.io-client';
 import { AIChatbot } from './components/AIChatbot';
-import * as wa from './lib/whatsapp';
+import WhatsAppConnect from './components/WhatsAppConnect';
+import { joinRoom, getSocket } from './lib/socketManager';
+import { sendMessages, getStats } from './lib/whatsappApi';
 import { 
   LineChart, 
   Line, 
@@ -95,15 +97,7 @@ const THEME = {
   dark: '#050505', // Deep Night
 };
 
-const formatQrData = (qr: string) => {
-  if (!qr) return null;
-  if (qr.startsWith('data:image') || qr.startsWith('http') || qr.startsWith('<svg')) return qr;
-  // If it looks like base64 but lacks prefix
-  if (/^[A-Za-z0-9+/=]+$/.test(qr.substring(0, 100))) {
-    return `data:image/png;base64,${qr}`;
-  }
-  return qr;
-};
+// Removed formatQrData
 
 const LEGAL_CONTENT = {
   privacy: {
@@ -3137,7 +3131,7 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
     if (!user) return;
     
     const isConnected = localStorage.getItem('techtaire_whatsapp_connected') === 'true';
-    const server = JSON.parse(localStorage.getItem('techtaire_server_config') || '{"url":"https://techtaire-server-production.up.railway.app"}');
+    const server = JSON.parse(localStorage.getItem('techtaire_server_config') || '{"url":"/api/whatsapp-server"}');
     const hasServer = server && server.url && isConnected;
 
     if (!hasServer) {
@@ -3203,42 +3197,45 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
         return;
       }
 
-      // Plan Restrictions
-      let contactsToSend = contacts;
-      if (profile.plan === 'free_trial') {
-        if (contacts.length > 50) {
-          alert("Free trial is limited to 50 contacts. Only first 50 will be processed.");
-          contactsToSend = contacts.slice(0, 50);
-        }
-      }
-
-      const maxMessages = profile.plan === 'free_trial' ? 10 : Infinity;
-      if (profile.plan === 'free_trial') {
-        alert("Free trial is limited to 10 messages total per campaign.");
-      }
-
+      // Send using WhatsApp server
       // 2. Send messages
-      let successCount = 0;
-      let failCount = 0;
-      let errorMessages: string[] = [];
-      const userEmail = getCurrentUserEmail();
-      const serverUrl = 'https://techtaire-server-production.up.railway.app';
-      const token = localStorage.getItem('wa_token');
-
       try {
-        const phones = contactsToSend.map(c => cleanPhoneNumber(c.whatsapp_number)).filter(Boolean);
-        setSendingProgress(`Sending bulk to ${phones.length} contacts...`);
+        const messages = contacts.map(c => ({
+          number: cleanPhoneNumber(c.whatsapp_number),
+          message: message
+        })).filter(c => c.number);
         
-        if (!token) throw new Error("WhatsApp token not found. Please reconnect.");
+        setSendingProgress(`Sending bulk to ${messages.length} contacts...`);
         
-        const response = await wa.sendBulk('prajwalnawale3040@gmail.com', phones, message);
+        // Join room for real-time updates
+        joinRoom(user.id);
+        const socket = getSocket();
         
-        successCount = response.sentCount || phones.length;
-        failCount = (response.totalCount || phones.length) - successCount;
-      } catch (e: any) {
-        console.error("Bulk sending error:", e);
-        showNotify("Failed to send bulk messages", "error");
-        throw e;
+        socket?.on('message_sent', (data: any) => {
+          setSendingProgress(`Sent ${data.sent} of ${messages.length} messages...`);
+        });
+        
+        socket?.on('burst_gap', () => {
+          setSendingProgress("Waiting to avoid spam detection...");
+        });
+        
+        socket?.on('limit_reached', () => {
+          showNotify("Daily limit of 3000 messages reached", "error");
+        });
+        
+        socket?.on('queue_complete', () => {
+          showNotify("All messages sent successfully! ✅", "success");
+          setSending(false);
+          setSendingProgress('');
+        });
+
+        await sendMessages(user.id, messages);
+        
+      } catch (err: any) {
+        console.error("Failed to send", err);
+        showNotify(`Failed to send: ${err.message}`, "error");
+        setSending(false);
+        setSendingProgress('');
       }
 
       // 3. Log campaign
@@ -3246,19 +3243,15 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
         user_id: user.id,
         name: `Campaign ${new Date().toLocaleString()}`,
         message,
-        status: failCount === 0 ? 'completed' : 'partially_completed',
-        total_messages: contactsToSend.length,
-        sent_messages: successCount
+        status: 'completed',
+        batch: selectedBatch,
+        attachment_url: attachmentPreview,
+        total_messages: contacts.length,
+        sent_messages: contacts.length
       }]);
-
-      if (successCount > 0) {
-        showNotify("Campaign sent successfully!", "success");
-      }
       
-      if (failCount > 0) {
-        showNotify(`❌ Failed to send to ${failCount} contacts`, "error");
-      }
-
+      showNotify("Campaign sent successfully!", "success");
+      
       setMessage('');
       setAttachment(null);
       setAttachmentPreview(null);
@@ -3267,7 +3260,6 @@ function MessagingView({ profile, user, showNotify }: { profile: any, user: any,
       alert("Failed to start campaign: " + error.message);
     } finally {
       setSending(false);
-      setSendingProgress('');
     }
   };
 
@@ -3745,72 +3737,7 @@ function HistoryView({ user, showNotify }: { user: any, showNotify: (m: string, 
 }
 
 function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { user: any, profile: any, onUpdate: () => void, onOpenModal: (type: any) => void, showNotify: (m: string, t?: 'success' | 'error' | 'info' | 'warning') => void }) {
-  const getCurrentUserEmail = () => user?.email || user?.uid || 'anonymous';
-  const serverUrl = 'https://techtaire-server-production.up.railway.app';
-  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'waiting' | 'connected'>('disconnected');
-  const [qrCode, setQrCode] = useState<string | null>(null);
-
-  const checkWhatsAppStatus = async () => {
-    try {
-      const userEmail = getCurrentUserEmail();
-      const status = await wa.getStatus(userEmail);
-      if (status === 'connected') {
-        setConnectionStatus('connected');
-        setQrCode(null);
-        localStorage.setItem('techtaire_whatsapp_connected', 'true');
-      } else {
-        setConnectionStatus('waiting');
-        localStorage.setItem('techtaire_whatsapp_connected', 'false');
-      }
-    } catch (err: any) {
-      console.error("Failed to check status", err);
-      setConnectionStatus('disconnected');
-      localStorage.setItem('techtaire_whatsapp_connected', 'false');
-    }
-  };
-
-  useEffect(() => {
-    let interval: any;
-    interval = setInterval(checkWhatsAppStatus, 5000);
-    checkWhatsAppStatus();
-    return () => clearInterval(interval);
-  }, [user]);
-
-  useEffect(() => {
-    const userEmail = getCurrentUserEmail();
-    const socket = wa.listenForQR(userEmail, (qr) => {
-      setQrCode(qr);
-      setConnectionStatus('waiting');
-    }, () => {
-      setConnectionStatus('connected');
-      setQrCode(null);
-      localStorage.setItem('techtaire_whatsapp_connected', 'true');
-    });
-
-    return () => {
-      socket.disconnect();
-    };
-  }, [user]);
-
-  const handleConnectWhatsApp = async () => {
-    try {
-      setQrCode(null);
-      const userEmail = getCurrentUserEmail();
-      await wa.connectWhatsApp(userEmail);
-      checkWhatsAppStatus();
-    } catch (err: any) {
-      console.error("Failed to connect", err);
-      showNotify(`Connection failed: ${err.message}`, "error");
-    }
-  };
-
-  const handleDisconnectWhatsApp = async () => {
-    setConnectionStatus('disconnected');
-    setQrCode(null);
-    localStorage.setItem('techtaire_whatsapp_connected', 'false');
-    localStorage.removeItem('wa_token_' + getCurrentUserEmail());
-    showNotify("WhatsApp disconnected locally", "success");
-  };
+  const serverUrl = '/api/whatsapp-server';
 
   return (
     <div className="max-w-2xl space-y-8">
@@ -3828,76 +3755,11 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
             />
           </div>
           
-          <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/10">
-            <div className="flex items-center gap-3">
-              <div className={cn(
-                "w-3 h-3 rounded-full animate-pulse",
-                connectionStatus === 'connected' ? "bg-emerald-500" : connectionStatus === 'waiting' ? "bg-amber-500" : "bg-red-500"
-              )} />
-              <span className="text-sm font-bold text-white uppercase tracking-widest">
-                {connectionStatus === 'connected' ? "WhatsApp Connected" : connectionStatus === 'waiting' ? "Waiting for Scan" : "Disconnected"}
-              </span>
-            </div>
-            <div className="flex gap-2">
-              {connectionStatus === 'connected' && (
-                <button 
-                  onClick={handleDisconnectWhatsApp}
-                  className="px-6 py-2 bg-red-500/20 text-red-500 rounded-xl text-xs font-bold hover:bg-red-500/30 transition-all"
-                >
-                  Disconnect
-                </button>
-              )}
-              <button 
-                onClick={handleConnectWhatsApp}
-                disabled={connectionStatus === 'connected'}
-                className="px-6 py-2 bg-royal-purple text-white rounded-xl text-xs font-bold hover:bg-amethyst transition-all disabled:opacity-50"
-              >
-                {connectionStatus === 'connected' ? "Connected" : "Connect WhatsApp"}
-              </button>
-            </div>
+          <div className="p-6 bg-white/5 rounded-2xl border border-white/10">
+            <p className="text-sm text-soft-lavender/80">
+              WhatsApp connection is managed from the dashboard.
+            </p>
           </div>
-
-          {connectionStatus === 'waiting' && (
-            <div className="flex flex-col items-center gap-4 p-10 bg-white/5 rounded-3xl border border-white/10">
-              {qrCode ? (
-                <div className="bg-white p-2 rounded-xl">
-                  <img src={qrCode} alt="WhatsApp QR Code" className="w-48 h-48" />
-                </div>
-              ) : (
-                <div className="w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center text-amber-500 animate-pulse">
-                  <QrCode size={32} />
-                </div>
-              )}
-              <p className="text-sm font-black text-white uppercase tracking-widest text-center">
-                Scan QR Required
-              </p>
-              <p className="text-xs text-soft-lavender/60 text-center max-w-md">
-                {qrCode ? "Scan this QR code with your WhatsApp app to connect." : "Please visit the server page to scan your QR code and connect WhatsApp."}
-              </p>
-              {!qrCode && (
-                <a 
-                  href="https://techtaire-server-production.up.railway.app" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="inline-block px-6 py-3 bg-amethyst text-white rounded-xl text-xs font-bold hover:bg-royal-purple transition-all mt-2"
-                >
-                  Open Server Page
-                </a>
-              )}
-            </div>
-          )}
-
-          {connectionStatus === 'connected' && (
-            <div className="p-6 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center gap-4">
-              <div className="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center text-white">
-                <Check size={20} />
-              </div>
-              <div>
-                <p className="text-white font-bold">✅ WhatsApp Connected</p>
-                <p className="text-xs text-soft-lavender/60">Your server is ready to send messages.</p>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -3984,6 +3846,21 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
 }
 
 const DashboardView = ({ user, profile, setView }: { user: any, profile: any, setView: (v: View) => void }) => {
+  const [waStats, setWaStats] = useState<{sent: number} | null>(null);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const stats = await getStats(user.id);
+        setWaStats(stats);
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    fetchStats();
+    const interval = setInterval(fetchStats, 30000);
+    return () => clearInterval(interval);
+  }, [user.id]);
   const getCurrentUserEmail = () => user?.email || user?.uid || 'anonymous';
   const [stats, setStats] = useState({
     totalContacts: 0,
@@ -3994,80 +3871,6 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [chartData, setChartData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [whatsappStatus, setWhatsappStatus] = useState<'disconnected' | 'waiting' | 'connected'>('disconnected');
-  const [qrCode, setQrCode] = useState<string | null>(null);
-
-  const checkWhatsAppStatus = async () => {
-    try {
-      const userEmail = getCurrentUserEmail();
-      const status = await wa.getStatus(userEmail);
-      if (status === 'connected') {
-        if (whatsappStatus !== 'connected') {
-          console.log("✅ WhatsApp Connected! Ready to send messages");
-        }
-        setWhatsappStatus('connected');
-        setIsConnecting(false);
-        setQrCode(null);
-        localStorage.setItem('techtaire_whatsapp_connected', 'true');
-      } else {
-        setWhatsappStatus('waiting');
-        localStorage.setItem('techtaire_whatsapp_connected', 'false');
-      }
-    } catch (err: any) {
-      console.error("Failed to check status", err);
-      setWhatsappStatus('disconnected');
-      localStorage.setItem('techtaire_whatsapp_connected', 'false');
-    }
-  };
-
-  const handleConnect = async () => {
-    setIsConnecting(true);
-    setQrCode(null);
-    try {
-      const userEmail = getCurrentUserEmail();
-      await wa.connectWhatsApp(userEmail);
-      checkWhatsAppStatus();
-    } catch (err: any) {
-      console.error("Failed to connect", err);
-      setIsConnecting(false);
-      alert(`Connection failed: ${err.message}`);
-    }
-  };
-
-  const handleDisconnect = async () => {
-    setWhatsappStatus('disconnected');
-    setIsConnecting(false);
-    setQrCode(null);
-    localStorage.setItem('techtaire_whatsapp_connected', 'false');
-    localStorage.removeItem('wa_token_' + getCurrentUserEmail());
-    console.log("WhatsApp disconnected locally");
-  };
-
-  useEffect(() => {
-    let interval: any;
-    interval = setInterval(checkWhatsAppStatus, 5000);
-    checkWhatsAppStatus();
-    return () => clearInterval(interval);
-  }, [user]);
-
-  useEffect(() => {
-    const userEmail = getCurrentUserEmail();
-    const socket = wa.listenForQR(userEmail, (qr) => {
-      setQrCode(qr);
-      setWhatsappStatus('waiting');
-      setIsConnecting(false);
-    }, () => {
-      setWhatsappStatus('connected');
-      setQrCode(null);
-      setIsConnecting(false);
-      localStorage.setItem('techtaire_whatsapp_connected', 'true');
-    });
-
-    return () => {
-      socket.disconnect();
-    };
-  }, [user]);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -4167,86 +3970,15 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
               </div>
               <div className="flex flex-col">
                 <h3 className="text-2xl font-black text-white tracking-tight">WhatsApp Connection</h3>
-                <div className="flex items-center gap-2 mt-1">
-                  <div className={cn(
-                    "w-2 h-2 rounded-full",
-                    whatsappStatus === 'connected' ? "bg-emerald-500" : 
-                    whatsappStatus === 'waiting' ? "bg-amber-500 animate-pulse" : 
-                    isConnecting ? "bg-blue-500 animate-pulse" : "bg-red-500"
-                  )} />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-soft-lavender/40">
-                    {whatsappStatus === 'connected' ? "WhatsApp Connected" : 
-                     whatsappStatus === 'waiting' ? "Waiting for Scan" : 
-                     isConnecting ? "Generating QR Code" : "Disconnected"}
-                  </span>
-                </div>
               </div>
             </div>
             <p className="text-soft-lavender/60 text-sm max-w-md">
               Connect your WhatsApp account to start sending automated campaigns and messages directly from the dashboard.
             </p>
-            {whatsappStatus !== 'connected' && !isConnecting ? (
-              <button 
-                onClick={handleConnect}
-                className="btn-premium px-8 py-4 flex items-center gap-2 group"
-              >
-                <QrCode size={18} className="group-hover:rotate-12 transition-transform" />
-                <span>Connect WhatsApp</span>
-              </button>
-            ) : whatsappStatus === 'connected' ? (
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-3 text-emerald-400 font-bold bg-emerald-500/10 px-6 py-3 rounded-2xl border border-emerald-500/20">
-                  <Check size={20} />
-                  <span>WhatsApp Connected</span>
-                </div>
-                <button 
-                  onClick={handleDisconnect}
-                  className="px-6 py-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl font-bold hover:bg-red-500/20 transition-all"
-                >
-                  Disconnect
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3 text-amber-400 font-bold">
-                <RefreshCw size={16} className="animate-spin" />
-                <span>{whatsappStatus === 'waiting' ? "Waiting for Scan..." : "Generating QR Code"}</span>
-              </div>
-            )}
+            <WhatsAppConnect userId={user.email} />
           </div>
-
           <div className="w-full lg:w-[320px] aspect-square glass-panel p-6 flex flex-col items-center justify-center bg-white/5 border-white/10 relative overflow-hidden text-center">
-            {qrCode ? (
-              <div className="bg-white p-2 rounded-xl">
-                <img src={qrCode} alt="WhatsApp QR Code" className="w-48 h-48" />
-              </div>
-            ) : whatsappStatus === 'connected' ? (
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-500">
-                  <Check size={40} />
-                </div>
-                <p className="text-xs font-black text-emerald-400 uppercase tracking-widest">WhatsApp Connected</p>
-                <p className="text-xs text-soft-lavender/60 mt-2">Ready to send messages</p>
-              </div>
-            ) : isConnecting || whatsappStatus === 'waiting' ? (
-              <div className="flex flex-col items-center gap-4">
-                <div className="w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center text-amber-500 animate-pulse">
-                  <QrCode size={32} />
-                </div>
-                <div>
-                  <p className="text-sm font-black text-white uppercase tracking-widest mb-2">Waiting for QR</p>
-                  <p className="text-xs text-soft-lavender/60 mb-4">
-                    Please wait while we generate your QR code...
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center text-soft-lavender/20">
-                  <MessageCircle size={32} />
-                </div>
-                <p className="text-[10px] font-black text-soft-lavender/40 uppercase tracking-widest">Not Connected</p>
-              </div>
-            )}
+            <WhatsAppConnect userId={user.email} />
           </div>
         </div>
       </motion.div>
@@ -4273,6 +4005,7 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+        <DashboardStat label="Messages Sent Today" value={`${waStats?.sent || 0} / 3000`} icon={SendHorizontal} color="bg-royal-purple" />
         <DashboardStat label="Total Contacts" value={stats.totalContacts.toLocaleString()} icon={Users} color="bg-blue-600" />
         <DashboardStat label="Messages Sent" value={stats.messagesSent.toLocaleString()} icon={SendHorizontal} color="bg-royal-purple" />
         <DashboardStat label="Delivery Rate" value={stats.deliveryRate} icon={CheckCircle2} color="bg-emerald-600" />

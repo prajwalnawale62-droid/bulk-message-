@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, X, MessageSquare, SendHorizontal, RefreshCw } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { cn } from '../lib/utils';
-import * as wa from '../lib/whatsapp';
+import { getStatus, formatQrData, sendMessages } from '../lib/whatsappApi';
+import { connectSocket, onSocketEvent, disconnectSocket } from '../lib/socketManager';
 
 interface Message {
   role: 'user' | 'bot';
@@ -33,7 +34,7 @@ export const AIChatbot = ({ user }: { user: any }) => {
   const checkWhatsAppStatus = async () => {
     try {
       const userEmail = getCurrentUserEmail();
-      const status = await wa.getStatus(userEmail);
+      const status = await getStatus(userEmail);
       const connected = status === 'connected';
       setIsConnected(connected);
       return connected;
@@ -78,16 +79,37 @@ export const AIChatbot = ({ user }: { user: any }) => {
     if (!isChatOpen) return;
     
     const userEmail = getCurrentUserEmail();
-    const socket = wa.listenForQR(userEmail, (qr) => {
-      setQrCode(qr);
+    connectSocket(userEmail);
+
+    onSocketEvent('qr', (qr: any) => {
+      const qrData = typeof qr === 'string' ? qr : qr.qr;
+      setQrCode(formatQrData(qrData));
       setIsConnected(false);
-    }, () => {
+    });
+
+    onSocketEvent('connected', () => {
+      console.log('Connected event received');
       setIsConnected(true);
       setQrCode(null);
     });
 
+    onSocketEvent('disconnected', () => {
+      console.log('Disconnected event received');
+      setIsConnected(false);
+      setQrCode(null);
+    });
+
+    onSocketEvent('session_status', (data: any) => {
+      if (data.status === 'connected') {
+        setIsConnected(true);
+        setQrCode(null);
+      } else {
+        setIsConnected(false);
+      }
+    });
+
     return () => {
-      socket.disconnect();
+      disconnectSocket();
     };
   }, [isChatOpen, user]);
 
@@ -207,7 +229,7 @@ export const AIChatbot = ({ user }: { user: any }) => {
             } else {
               try {
                 const userEmail = getCurrentUserEmail();
-                const data = await wa.sendMessage(userEmail, phone, message);
+                const data = await sendMessages(userEmail, [{ number: phone, message }]);
                 functionResponses.push({
                   name: "sendWhatsAppMessage",
                   response: data
@@ -230,7 +252,7 @@ export const AIChatbot = ({ user }: { user: any }) => {
             } else {
               try {
                 const userEmail = getCurrentUserEmail();
-                const data = await wa.sendBulk(userEmail, phones, message);
+                const data = await sendMessages(userEmail, phones.map((phone: string) => ({ number: phone, message })));
                 functionResponses.push({
                   name: "sendBulkWhatsAppMessages",
                   response: data

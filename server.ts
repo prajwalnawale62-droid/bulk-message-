@@ -188,8 +188,10 @@ async function startServer() {
   // --- WhatsApp Railway Server Proxy ---
   app.all("/api/whatsapp-server/:path(*)", async (req, res) => {
     const path = req.params.path;
-    const serverUrl = 'https://techtaire-server-production.up.railway.app';
+    console.log(`Proxying ${req.method} request to ${path}`);
+    const serverUrl = 'https://techtaire1-production.up.railway.app';
     const url = `${serverUrl}/${path}`;
+    console.log(`Target URL: ${url}`);
     
     try {
       // Filter out headers that might cause issues
@@ -501,7 +503,7 @@ async function startServer() {
     
     try {
       const response = await axios({
-        url: `https://techtaire-server-production.up.railway.app${url}`,
+        url: `https://techtaire1-production.up.railway.app${url}`,
         method,
         data: body,
         headers: {
