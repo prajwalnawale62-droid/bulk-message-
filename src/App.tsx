@@ -742,7 +742,7 @@ export default function App() {
   const [legalModal, setLegalModal] = useState<'privacy' | 'terms' | 'copyright' | null>(null);
 
   const showNotify = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
-    const id = Date.now();
+    const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { id, message, type }]);
   };
 
@@ -3864,7 +3864,7 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
       }
     };
     fetchStats();
-    const interval = setInterval(fetchStats, 30000);
+    const interval = setInterval(fetchStats, 60000);
     return () => clearInterval(interval);
   }, [user.id]);
   const getCurrentUserEmail = () => user?.email || user?.uid || 'anonymous';
@@ -3984,7 +3984,16 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
             <WhatsAppConnect userId={user.email} />
           </div>
           <div className="w-full lg:w-[320px] aspect-square glass-panel p-6 flex flex-col items-center justify-center bg-white/5 border-white/10 relative overflow-hidden text-center">
-            <WhatsAppConnect userId={user.email} />
+            <div className="absolute inset-0 bg-gradient-to-br from-amethyst/10 to-transparent opacity-50" />
+            <div className="relative z-10 flex flex-col items-center gap-4">
+              <div className="w-16 h-16 bg-amethyst/20 rounded-2xl flex items-center justify-center text-amethyst animate-pulse">
+                <Zap size={32} />
+              </div>
+              <div>
+                <h4 className="text-lg font-black text-white">Ready to Scale?</h4>
+                <p className="text-soft-lavender/60 text-sm">Connect your account and start reaching thousands of customers instantly.</p>
+              </div>
+            </div>
           </div>
         </div>
       </motion.div>

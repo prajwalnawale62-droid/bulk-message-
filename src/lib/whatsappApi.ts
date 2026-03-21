@@ -1,6 +1,10 @@
 import axios from 'axios';
 
-const BASE_URL = "/api/whatsapp-server";
+const WHATSAPP_SERVER_URL = 'https://techtaire1-production.up.railway.app';
+const BASE_URL = typeof window !== 'undefined' && 
+  (window.location.hostname.includes('localhost') || window.location.hostname.includes('run.app')) 
+  ? "/api/whatsapp-server" 
+  : WHATSAPP_SERVER_URL;
 
 export async function startSession(userId: string) {
   try {

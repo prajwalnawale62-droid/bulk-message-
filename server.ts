@@ -217,7 +217,10 @@ async function startServer() {
       });
 
       if (response.status >= 400) {
-        console.error(`WhatsApp Proxy Error (${response.status}) for ${path}:`, JSON.stringify(response.data));
+        // Suppress 404 for stats as it's common when session isn't initialized yet
+        if (!(response.status === 404 && path.includes('stats'))) {
+          console.error(`WhatsApp Proxy Error (${response.status}) for ${path}:`, JSON.stringify(response.data));
+        }
       }
 
       // If the backend returns 429, pass it through to the client

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, CheckCircle2, AlertCircle, Power } from 'lucide-react';
 import { startSession, formatQrData } from '../lib/whatsappApi';
 import { connectSocket, joinRoom, disconnectSocket, onSocketEvent, offSocketEvent } from '../lib/socketManager';
@@ -57,7 +57,12 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
     setStatus('error');
   }, []);
 
+  const initializing = useRef(false);
+
   const initSession = async () => {
+    if (initializing.current) return;
+    initializing.current = true;
+    
     setStatus('loading');
     setError(null);
     console.log('Initializing WhatsApp session for user:', userId);
@@ -84,12 +89,18 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
 
     } catch (err: any) {
       console.error('Failed to initialize WhatsApp session:', err);
+      const errorMessage = err.response?.data?.error || err.message || 'Unknown error';
+      
       if (err.response?.status === 429) {
         setError('Too many requests. Please wait a minute and try again.');
+      } else if (err.response?.status === 404) {
+        setError('WhatsApp server not found. Please check your configuration.');
       } else {
-        setError('Failed to initialize WhatsApp session. Please try again.');
+        setError(`Failed to initialize WhatsApp session: ${errorMessage}`);
       }
       setStatus('error');
+    } finally {
+      initializing.current = false;
     }
   };
 
