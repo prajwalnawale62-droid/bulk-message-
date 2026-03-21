@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Loader2, CheckCircle2, AlertCircle, Power } from 'lucide-react';
 import { startSession, formatQrData } from '../lib/whatsappApi';
-import { connectSocket, joinRoom, getSocket, disconnectSocket, onSocketEvent } from '../lib/socketManager';
+import { connectSocket, joinRoom, getSocket, disconnectSocket, onSocketEvent, offSocketEvent } from '../lib/socketManager';
 
 interface WhatsAppConnectProps {
   userId: string;
@@ -12,62 +12,75 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const handleQr = useCallback((data: any) => {
+    console.log('QR event received:', data);
+    const qr = typeof data === 'string' ? data : data.qr;
+    if (qr) {
+      setQrCode(formatQrData(qr));
+      setStatus('qr');
+    } else {
+      console.warn('QR data is empty/null');
+    }
+  }, []);
+
+  const handleConnected = useCallback(() => {
+    console.log('Connected event received');
+    setStatus('connected');
+    setQrCode(null);
+    localStorage.setItem('techtaire_whatsapp_connected', 'true');
+  }, []);
+
+  const handleSessionStatus = useCallback((data: any) => {
+    console.log('Session status event received:', data);
+    if (data.status === 'connected') {
+      setStatus('connected');
+      setQrCode(null);
+      localStorage.setItem('techtaire_whatsapp_connected', 'true');
+    } else if (data.status === 'disconnected') {
+      setStatus('disconnected');
+      setQrCode(null);
+      localStorage.setItem('techtaire_whatsapp_connected', 'false');
+    }
+  }, []);
+
+  const handleDisconnected = useCallback(() => {
+    console.log('Disconnected event received');
+    setStatus('disconnected');
+    setQrCode(null);
+    localStorage.setItem('techtaire_whatsapp_connected', 'false');
+  }, []);
+
+  const handleConnectError = useCallback((err: any) => {
+    console.error('Socket connection error:', err);
+    setError('Socket connection error. Please check your internet.');
+    setStatus('error');
+  }, []);
+
   const initSession = async () => {
     setStatus('loading');
     setError(null);
     console.log('Initializing WhatsApp session for user:', userId);
+    
     try {
-      await startSession(userId);
-      console.log('Session started successfully');
+      // 1. Initialize Socket FIRST and add listeners
       connectSocket(userId);
-      console.log('Socket connected');
+      console.log('Socket initialized, joining room for:', userId);
       
-      onSocketEvent('qr', (data: any) => {
-        console.log('QR event received:', data);
-        const qr = typeof data === 'string' ? data : data.qr;
-        if (qr) {
-          setQrCode(formatQrData(qr));
-          setStatus('qr');
-        } else {
-          console.warn('QR data is empty/null');
-        }
-      });
+      // Add listeners immediately
+      onSocketEvent('qr', handleQr);
+      onSocketEvent('connected', handleConnected);
+      onSocketEvent('session_status', handleSessionStatus);
+      onSocketEvent('disconnected', handleDisconnected);
+      onSocketEvent('connect_error', handleConnectError);
 
-      onSocketEvent('connected', () => {
-        console.log('Connected event received');
-        setStatus('connected');
-        setQrCode(null);
-        localStorage.setItem('techtaire_whatsapp_connected', 'true');
-      });
-
-      onSocketEvent('session_status', (data: any) => {
-        console.log('Session status event received:', data);
-        if (data.status === 'connected') {
-          setStatus('connected');
-          setQrCode(null);
-          localStorage.setItem('techtaire_whatsapp_connected', 'true');
-        } else if (data.status === 'disconnected') {
-          setStatus('disconnected');
-          setQrCode(null);
-          localStorage.setItem('techtaire_whatsapp_connected', 'false');
-        }
-      });
-
-      onSocketEvent('disconnected', () => {
-        console.log('Disconnected event received');
-        setStatus('disconnected');
-        setQrCode(null);
-        localStorage.setItem('techtaire_whatsapp_connected', 'false');
-      });
+      // 2. NOW start the session
+      console.log('Starting session via API...');
+      await startSession(userId);
+      console.log('Session start API call completed');
       
-      onSocketEvent('connect_error', (err: any) => {
-        console.error('Socket connection error:', err);
-        setError('Socket connection error.');
-        setStatus('error');
-      });
     } catch (err) {
       console.error('Failed to initialize WhatsApp session:', err);
-      setError('Failed to initialize WhatsApp session.');
+      setError('Failed to initialize WhatsApp session. Please try again.');
       setStatus('error');
     }
   };
@@ -75,9 +88,14 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
   useEffect(() => {
     initSession();
     return () => {
-      disconnectSocket();
+      // Cleanup listeners on unmount
+      offSocketEvent('qr', handleQr);
+      offSocketEvent('connected', handleConnected);
+      offSocketEvent('session_status', handleSessionStatus);
+      offSocketEvent('disconnected', handleDisconnected);
+      offSocketEvent('connect_error', handleConnectError);
     };
-  }, [userId]);
+  }, [userId, handleQr, handleConnected, handleSessionStatus, handleDisconnected, handleConnectError]);
 
   const handleDisconnect = async () => {
     // Implement logout logic if needed, or just disconnect

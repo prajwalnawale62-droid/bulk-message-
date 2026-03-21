@@ -4,7 +4,7 @@ import { Sparkles, X, MessageSquare, SendHorizontal, RefreshCw } from 'lucide-re
 import { GoogleGenAI, Type } from "@google/genai";
 import { cn } from '../lib/utils';
 import { getStatus, formatQrData, sendMessages } from '../lib/whatsappApi';
-import { connectSocket, onSocketEvent, disconnectSocket } from '../lib/socketManager';
+import { connectSocket, onSocketEvent, disconnectSocket, offSocketEvent } from '../lib/socketManager';
 
 interface Message {
   role: 'user' | 'bot';
@@ -81,27 +81,27 @@ export const AIChatbot = ({ user }: { user: any }) => {
     const userEmail = getCurrentUserEmail();
     connectSocket(userEmail);
 
-    onSocketEvent('qr', (qr: any) => {
+    const handleQr = (qr: any) => {
       const qrData = typeof qr === 'string' ? qr : qr.qr;
       setQrCode(formatQrData(qrData));
       setIsConnected(false);
-    });
+    };
 
-    onSocketEvent('connected', () => {
+    const handleConnected = () => {
       console.log('Connected event received');
       setIsConnected(true);
       setQrCode(null);
       localStorage.setItem('techtaire_whatsapp_connected', 'true');
-    });
+    };
 
-    onSocketEvent('disconnected', () => {
+    const handleDisconnected = () => {
       console.log('Disconnected event received');
       setIsConnected(false);
       setQrCode(null);
       localStorage.setItem('techtaire_whatsapp_connected', 'false');
-    });
+    };
 
-    onSocketEvent('session_status', (data: any) => {
+    const handleSessionStatus = (data: any) => {
       if (data.status === 'connected') {
         setIsConnected(true);
         setQrCode(null);
@@ -110,10 +110,18 @@ export const AIChatbot = ({ user }: { user: any }) => {
         setIsConnected(false);
         localStorage.setItem('techtaire_whatsapp_connected', 'false');
       }
-    });
+    };
+
+    onSocketEvent('qr', handleQr);
+    onSocketEvent('connected', handleConnected);
+    onSocketEvent('disconnected', handleDisconnected);
+    onSocketEvent('session_status', handleSessionStatus);
 
     return () => {
-      disconnectSocket();
+      offSocketEvent('qr', handleQr);
+      offSocketEvent('connected', handleConnected);
+      offSocketEvent('disconnected', handleDisconnected);
+      offSocketEvent('session_status', handleSessionStatus);
     };
   }, [isChatOpen, user]);
 
