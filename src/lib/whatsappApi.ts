@@ -4,7 +4,10 @@ export function getBaseUrl() {
   if (typeof window === 'undefined') return '/api/whatsapp-server';
   
   const stored = localStorage.getItem('whatsapp_server_url');
-  if (!stored) return '/api/whatsapp-server';
+  if (!stored) {
+    console.log("No stored whatsapp_server_url, using default: /api/whatsapp-server");
+    return '/api/whatsapp-server';
+  }
 
   // If running on AI Studio, always use relative URLs to avoid cross-environment issues
   // Unless explicitly overridden by the user
@@ -29,13 +32,18 @@ export function getBaseUrl() {
   
   // If the user provided a full URL, use it directly
   if (cleanUrl.startsWith('http')) {
+    console.log("Using absolute whatsapp_server_url:", cleanUrl);
     return cleanUrl;
   }
 
   if (cleanUrl.endsWith('/api/whatsapp-server')) {
+    console.log("Using cleanUrl as is:", cleanUrl);
     return cleanUrl;
   }
-  return `${cleanUrl}/api/whatsapp-server`;
+  
+  const finalUrl = `${cleanUrl}/api/whatsapp-server`;
+  console.log("Constructed finalUrl:", finalUrl);
+  return finalUrl;
 }
 
 export async function startSession(userId: string) {
@@ -83,6 +91,21 @@ export async function sendMessages(userId: string, messages: {number: string, me
   
   if (attachmentUrl) {
     payload.mediaUrl = attachmentUrl;
+  }
+
+  // If hitting the Railway server from browser, use proxy to avoid CORS
+  if (BASE_URL.includes('railway.app') && typeof window !== 'undefined') {
+    try {
+      const response = await axios.post(`/api/whatsapp/proxy`, {
+        url: `/messages/send`,
+        method: 'POST',
+        body: payload
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('Error sending messages via proxy:', error.response?.data || error.message);
+      throw error;
+    }
   }
 
   try {

@@ -181,6 +181,7 @@ async function startServer() {
   });
 
   app.get("/api/whatsapp-server/session/status/:userId", (req, res) => {
+    console.log(`Hit /api/whatsapp-server/session/status/${req.params.userId} route`);
     try {
       const { userId } = req.params;
       const status = getWhatsAppStatus(userId);
@@ -191,6 +192,7 @@ async function startServer() {
   });
 
   app.get("/api/whatsapp-server/messages/stats/:userId", (req, res) => {
+    console.log(`Hit /api/whatsapp-server/messages/stats/${req.params.userId} route`);
     try {
       const { userId } = req.params;
       const stats = getWhatsAppStats(userId);
@@ -201,6 +203,7 @@ async function startServer() {
   });
 
   app.post("/api/whatsapp-server/messages/send", async (req, res) => {
+    console.log("Hit /api/whatsapp-server/messages/send route", req.body);
     try {
       const { userId, messages, mediaUrl } = req.body;
       if (!userId || !messages || !Array.isArray(messages)) {
@@ -522,7 +525,7 @@ async function startServer() {
   // --- WhatsApp Proxy ---
   app.post("/api/whatsapp/proxy", async (req, res) => {
     const { url, method, body, headers } = req.body;
-    console.log(`Proxying ${method} request to ${url}`);
+    console.log(`Proxying ${method} request to ${url} with body:`, body);
     
     if (url === '/api/session/login' || url === '/api/session/register') {
       body.password = process.env.WHATSAPP_SESSION_PASSWORD;

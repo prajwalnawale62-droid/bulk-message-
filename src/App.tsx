@@ -719,8 +719,17 @@ export default function App() {
   }, [view]);
 
   useEffect(() => {
+    const handleGlobalError = (event: ErrorEvent) => {
+      if (event.message === 'Script error.') {
+        console.error('Cross-origin script error detected. This often happens when an external script fails to load or has CORS issues.');
+      }
+    };
+    window.addEventListener('error', handleGlobalError);
+    
     document.title = "Techtaire";
     emailjs.init("TnTWjrOj2IKmPB-LV");
+
+    return () => window.removeEventListener('error', handleGlobalError);
   }, []);
   const [isIntroComplete, setIsIntroComplete] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -909,7 +918,11 @@ export default function App() {
         },
       };
 
-      const rzp = new (window as any).Razorpay(options);
+      const rzp = (window as any).Razorpay ? new (window as any).Razorpay(options) : null;
+      if (!rzp) {
+        showNotify("Payment system (Razorpay) failed to load. Please check your internet connection or disable ad-blockers and try again.", "error");
+        return;
+      }
       rzp.open();
     } catch (error: any) {
       console.error("Payment Error:", error);
