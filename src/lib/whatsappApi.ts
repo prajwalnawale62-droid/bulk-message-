@@ -2,48 +2,11 @@ import axios from 'axios';
 
 export function getBaseUrl() {
   if (typeof window === 'undefined') return '/api/whatsapp-server';
-  
   const stored = localStorage.getItem('whatsapp_server_url');
-  if (!stored) {
-    console.log("No stored whatsapp_server_url, using default: /api/whatsapp-server");
-    return '/api/whatsapp-server';
+  if (stored && stored.startsWith('http')) {
+    return stored.replace(/\/$/, '');
   }
-
-  // If running on AI Studio, always use relative URLs to avoid cross-environment issues
-  // Unless explicitly overridden by the user
-  if (window.location.hostname.includes('.run.app') && !stored.includes('railway.app')) {
-    console.warn("Ignoring whatsapp_server_url because app is running on AI Studio. Using relative URL.");
-    return '/api/whatsapp-server';
-  }
-
-  // Ignore if it's localhost and we are not on localhost
-  if (!window.location.hostname.includes('localhost') && stored.includes('localhost')) {
-    console.warn("Ignoring localhost whatsapp_server_url because app is not running on localhost");
-    return '/api/whatsapp-server';
-  }
-
-  // Ignore if it contains the current hostname
-  if (stored.includes(window.location.hostname)) {
-    console.warn("Ignoring whatsapp_server_url because it matches current hostname. Using relative URL.");
-    return '/api/whatsapp-server';
-  }
-
-  const cleanUrl = stored.replace(/\/$/, '');
-  
-  // If the user provided a full URL, use it directly
-  if (cleanUrl.startsWith('http')) {
-    console.log("Using absolute whatsapp_server_url:", cleanUrl);
-    return cleanUrl;
-  }
-
-  if (cleanUrl.endsWith('/api/whatsapp-server')) {
-    console.log("Using cleanUrl as is:", cleanUrl);
-    return cleanUrl;
-  }
-  
-  const finalUrl = `${cleanUrl}/api/whatsapp-server`;
-  console.log("Constructed finalUrl:", finalUrl);
-  return finalUrl;
+  return '/api/whatsapp-server';
 }
 
 export async function startSession(userId: string) {

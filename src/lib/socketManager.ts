@@ -2,40 +2,11 @@ import { io, Socket } from 'socket.io-client';
 
 export const getServerUrl = () => {
   if (typeof window === 'undefined') return '';
-  
   const stored = localStorage.getItem('whatsapp_server_url');
   if (!stored) return window.location.origin;
-
-  // If running on AI Studio, always use relative URLs to avoid cross-environment issues
-  // Unless explicitly overridden by the user
-  if (window.location.hostname.includes('.run.app') && !stored.includes('railway.app')) {
-    console.warn("Ignoring whatsapp_server_url because app is running on AI Studio. Using relative URL.");
-    return window.location.origin;
-  }
-
-  // Ignore if it's localhost and we are not on localhost
-  if (!window.location.hostname.includes('localhost') && stored.includes('localhost')) {
-    console.warn("Ignoring localhost whatsapp_server_url because app is not running on localhost");
-    return window.location.origin;
-  }
-
-  // Ignore if it contains the current hostname
-  if (stored.includes(window.location.hostname)) {
-    console.warn("Ignoring whatsapp_server_url because it matches current hostname. Using relative URL.");
-    return window.location.origin;
-  }
-
   const cleanUrl = stored.replace(/\/$/, '');
-  
-  // If the user provided a full URL, use it directly
-  if (cleanUrl.startsWith('http')) {
-    return cleanUrl;
-  }
-
-  if (cleanUrl.endsWith('/api/whatsapp-server')) {
-    return cleanUrl.replace('/api/whatsapp-server', '');
-  }
-  return cleanUrl;
+  if (cleanUrl.startsWith('http')) return cleanUrl;
+  return window.location.origin;
 };
 
 let socket: Socket | null = null;
@@ -48,7 +19,8 @@ export const connectSocket = (userId?: string) => {
       reconnection: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 1000,
-      transports: ['websocket', 'polling'], // Allow polling as fallback
+      // Removed transports: ['websocket', 'polling'] to allow default polling-first behavior
+      // which is more robust behind proxies.
     });
 
     socket.on('connect', () => {
