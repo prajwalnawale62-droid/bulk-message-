@@ -69,7 +69,7 @@ export async function sendMessages(userId: string, messages: {number: string, me
         formData.append('file', blob, 'attachment');
         formData.append('messaging_product', 'whatsapp');
         
-        const uploadRes = await axios.post(`https://graph.facebook.com/v17.0/${metaPhoneId}/media`, formData, {
+        const uploadRes = await axios.post(`https://graph.facebook.com/v18.0/${metaPhoneId}/media`, formData, {
           headers: {
             'Authorization': `Bearer ${metaAccessToken}`
           }
@@ -80,16 +80,20 @@ export async function sendMessages(userId: string, messages: {number: string, me
         if (mimeType.startsWith('video/')) mediaType = "video";
         else if (mimeType.startsWith('image/')) mediaType = "image";
         else mediaType = "document";
-      } catch (err) {
-        console.error('Failed to upload media to Meta:', err);
+      } catch (err: any) {
+        console.error('Failed to upload media to Meta:', err.response?.data || err.message);
+        throw new Error(`Media upload failed: ${JSON.stringify(err.response?.data || err.message)}`);
       }
     }
 
     for (const msg of messages) {
       try {
+        // Ensure phone number has no '+' and is a string
+        const formattedNumber = msg.number.replace('+', '');
+        
         const payload: any = {
           messaging_product: "whatsapp",
-          to: msg.number,
+          to: formattedNumber,
         };
         
         if (mediaId) {
@@ -112,7 +116,7 @@ export async function sendMessages(userId: string, messages: {number: string, me
           payload.text = { body: msg.message };
         }
         
-        await axios.post(`https://graph.facebook.com/v17.0/${metaPhoneId}/messages`, payload, {
+        await axios.post(`https://graph.facebook.com/v18.0/${metaPhoneId}/messages`, payload, {
           headers: {
             'Authorization': `Bearer ${metaAccessToken}`,
             'Content-Type': 'application/json'
@@ -122,7 +126,8 @@ export async function sendMessages(userId: string, messages: {number: string, me
         // Add a small delay to avoid rate limits
         await new Promise(resolve => setTimeout(resolve, 100));
       } catch (err: any) {
-        console.error('Meta API error:', err.response?.data || err.message);
+        console.error('Meta API error for number', msg.number, ':', err.response?.data || err.message);
+        throw new Error(`Meta API error: ${JSON.stringify(err.response?.data || err.message)}`);
       }
     }
     return { success: true, sent: sentCount };
