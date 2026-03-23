@@ -111,9 +111,7 @@ Information We Collect:
 - Device information such as browser type and operating system
 - IP address and basic usage data
 
-The collected information may be used to operate the messaging platform, improve functionality, prevent misuse, and maintain system security.
-
-Our platform may use the WhatsApp Business API provided by Meta Platforms for messaging services.`
+The collected information may be used to operate the messaging platform, improve functionality, prevent misuse, and maintain system security.`
   },
   terms: {
     title: "Terms and Conditions",
@@ -746,8 +744,7 @@ export default function App() {
   useEffect(() => {
     const checkConnection = () => {
       const isQrConnected = localStorage.getItem('techtaire_whatsapp_connected') === 'true';
-      const isApiConnected = !!(localStorage.getItem('meta_access_token') && localStorage.getItem('meta_phone_id'));
-      setIsWhatsappConnected(isQrConnected || isApiConnected);
+      setIsWhatsappConnected(isQrConnected);
     };
 
     // Initial check
@@ -1950,6 +1947,10 @@ const DeveloperBoyIllustration = () => {
 
         {/* Desk Line */}
         <line x1="60" y1="340" x2="340" y2="340" stroke="#4C1D95" strokeWidth="2" strokeOpacity="0.4" strokeLinecap="round" />
+        
+        {/* Chair */}
+        <path d="M 120 380 L 280 380 L 290 350 L 110 350 Z" fill="#1E293B" />
+        <path d="M 140 350 L 260 350 L 250 320 L 150 320 Z" fill="#334155" />
 
         {/* Developer Body (Sleek & Abstract) */}
         <path d="M 140 340 C 140 240, 260 240, 260 340 Z" fill="url(#bodyGrad)" />
@@ -1976,6 +1977,16 @@ const DeveloperBoyIllustration = () => {
           animate={{ opacity: [0.5, 0.9, 0.5] }} transition={{ duration: 2.5, repeat: Infinity }} />
         <motion.circle cx="217" cy="158" r="2" fill="#A78BFA" 
           animate={{ opacity: [0.5, 0.9, 0.5] }} transition={{ duration: 2.5, repeat: Infinity }} />
+
+        {/* Hands (Typing) */}
+        <motion.path 
+          d="M 150 280 L 170 260 L 180 270 Z" fill="#FDBA74"
+          animate={{ y: [0, -5, 0] }} transition={{ duration: 0.2, repeat: Infinity }}
+        />
+        <motion.path 
+          d="M 250 280 L 230 260 L 220 270 Z" fill="#FDBA74"
+          animate={{ y: [0, -5, 0] }} transition={{ duration: 0.2, repeat: Infinity, delay: 0.1 }}
+        />
 
         {/* Laptop Screen (Back part) */}
         <rect x="110" y="210" width="180" height="115" rx="6" fill="url(#laptopGrad)" stroke="#334155" strokeWidth="1.5" />
@@ -3436,7 +3447,7 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
           }
         } else if (response && response.sent !== undefined) {
           if (response.sent === 0 && messages.length > 0) {
-             throw new Error(`All messages failed. Check your Meta API credentials and ensure numbers include country codes.`);
+            throw new Error(`All messages failed. Please ensure numbers include country codes and your WhatsApp session is connected.`);
           } else if (response.sent < messages.length) {
              showNotify(`${messages.length - response.sent} messages failed to send.`, "warning");
           }
@@ -4211,12 +4222,6 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
   const [serverUrl, setServerUrl] = useState(() => {
     return localStorage.getItem('whatsapp_server_url') || '';
   });
-  const [metaAccessToken, setMetaAccessToken] = useState(() => {
-    return localStorage.getItem('meta_access_token') || '';
-  });
-  const [metaPhoneId, setMetaPhoneId] = useState(() => {
-    return localStorage.getItem('meta_phone_id') || '';
-  });
 
   const handleSaveUrl = () => {
     if (serverUrl.trim()) {
@@ -4231,33 +4236,6 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
     }
   };
 
-  const handleSaveMetaConfig = () => {
-    if (metaAccessToken.trim() && metaPhoneId.trim()) {
-      localStorage.setItem('meta_access_token', metaAccessToken.trim());
-      localStorage.setItem('meta_phone_id', metaPhoneId.trim());
-      showNotify('Meta API configuration saved successfully', 'success');
-    } else {
-      localStorage.removeItem('meta_access_token');
-      localStorage.removeItem('meta_phone_id');
-      showNotify('Meta API configuration cleared', 'info');
-    }
-  };
-
-  const handleTestMetaConnection = async () => {
-    if (!metaAccessToken.trim() || !metaPhoneId.trim()) {
-      showNotify('Please enter both Access Token and Phone ID', 'error');
-      return;
-    }
-    showNotify('Testing connection...', 'info');
-    try {
-      // Simulate API call to test connection
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      showNotify('Connection successful!', 'success');
-    } catch (error) {
-      showNotify('Connection failed. Please check your credentials.', 'error');
-    }
-  };
-
   return (
     <div className="max-w-2xl space-y-8">
       <div className="glass-panel p-10 space-y-8">
@@ -4266,49 +4244,6 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
           Connect your WhatsApp account by scanning the QR code below.
         </p>
         <WhatsAppConnect userId={user?.email || 'anonymous'} />
-      </div>
-
-      <div className="glass-panel p-10 space-y-8">
-        <h3 className="text-xl font-black text-white tracking-tight">Meta API Configuration</h3>
-        <p className="text-soft-lavender/60 text-sm">
-          Configure your Meta Cloud API credentials for sending messages.
-        </p>
-        <div className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Access Token</label>
-            <input 
-              type="password" 
-              value={metaAccessToken}
-              onChange={(e) => setMetaAccessToken(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none transition-all focus:border-amethyst focus:ring-1 focus:ring-amethyst"
-              placeholder="EAA..."
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Phone Number ID</label>
-            <input 
-              type="text" 
-              value={metaPhoneId}
-              onChange={(e) => setMetaPhoneId(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none transition-all focus:border-amethyst focus:ring-1 focus:ring-amethyst"
-              placeholder="123456789012345"
-            />
-          </div>
-          <div className="flex gap-4 pt-2">
-            <button
-              onClick={handleTestMetaConnection}
-              className="flex-1 py-4 bg-white/5 border border-white/10 text-white rounded-2xl font-bold hover:bg-white/10 transition-all"
-            >
-              Test Connection
-            </button>
-            <button
-              onClick={handleSaveMetaConfig}
-              className="flex-1 py-4 bg-emerald-500 text-white rounded-2xl font-bold hover:bg-emerald-600 transition-all"
-            >
-              Save Config
-            </button>
-          </div>
-        </div>
       </div>
 
       <div className="glass-panel p-10 space-y-8">
@@ -4636,32 +4571,27 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
 function GuideView({ setView }: { setView: (v: View) => void }) {
   const steps = [
     {
-      title: "1. Create Meta Developer App",
-      description: "Go to developers.facebook.com, create a 'Business' type app, and add the 'WhatsApp' product to it.",
-      icon: Globe
+      title: "1. Start WhatsApp Session",
+      description: "Go to Settings in Techtaire and click 'Generate QR Code' to initiate a new WhatsApp session.",
+      icon: QrCode
     },
     {
-      title: "2. Get API Credentials",
-      description: "In your Meta App dashboard, go to WhatsApp > API Setup. Copy your 'Temporary Access Token' (or create a permanent one) and 'Phone Number ID'.",
-      icon: Lock
+      title: "2. Scan QR Code",
+      description: "Open WhatsApp on your phone, go to Linked Devices, and scan the QR code displayed on the screen to connect.",
+      icon: Smartphone
     },
     {
-      title: "3. Configure Techtaire",
-      description: "Go to Settings in Techtaire and paste your Access Token and Phone Number ID. Click 'Save Configuration' to link your account.",
-      icon: Settings
-    },
-    {
-      title: "4. Manage Contacts & Batches",
+      title: "3. Manage Contacts & Batches",
       description: "In the Contacts tab, you can add individual students or upload an entire batch using Excel. Organize them into batches for targeted messaging.",
       icon: Users
     },
     {
-      title: "5. Compose & Send",
+      title: "4. Compose & Send",
       description: "Use the Messaging tab to write your message. You can select a specific batch or send to all contacts. Use AI Enhance for professional results.",
       icon: Send
     },
     {
-      title: "6. Track Performance",
+      title: "5. Track Performance",
       description: "Monitor your campaign progress in the History tab. See delivery rates and manage previous campaign records.",
       icon: History
     }

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, CheckCircle2, AlertCircle, Power, Smartphone } from 'lucide-react';
-import { startSession, formatQrData, getStatus, logoutSession } from '../lib/whatsappApi';
-import { connectSocket, joinRoom, disconnectSocket, onSocketEvent, offSocketEvent } from '../lib/socketManager';
+import { startSession, getStatus, logoutSession } from '../lib/whatsappApi';
 
 interface WhatsAppConnectProps {
   userId: string;
@@ -12,13 +11,31 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const SERVER_URL = 'https://techtaire1-production.up.railway.app';
+
   const handleQr = useCallback((data: any) => {
     console.log('QR event received:', data);
     const qr = typeof data === 'string' ? data : data.qr;
 
     if (qr) {
-      setQrCode(formatQrData(qr));
       setStatus('qr');
+      setQrCode(qr); // Store raw QR string
+      
+      // Render QR code using QRCode library
+      setTimeout(() => {
+        const element = document.getElementById('qrcode-container');
+        if (element) {
+          element.innerHTML = '';
+          new (window as any).QRCode(element, {
+            text: qr,
+            width: 256,
+            height: 256,
+            colorDark : "#000000",
+            colorLight : "#ffffff",
+            correctLevel : (window as any).QRCode.CorrectLevel.H
+          });
+        }
+      }, 100);
     } else {
       console.warn('QR data is empty/null');
     }
@@ -31,19 +48,6 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
     localStorage.setItem('techtaire_whatsapp_connected', 'true');
   }, []);
 
-  const handleSessionStatus = useCallback((data: any) => {
-    console.log('Session status event received:', data);
-    if (data.status === 'connected') {
-      setStatus('connected');
-      setQrCode(null);
-      localStorage.setItem('techtaire_whatsapp_connected', 'true');
-    } else if (data.status === 'disconnected') {
-      setStatus('disconnected');
-      setQrCode(null);
-      localStorage.setItem('techtaire_whatsapp_connected', 'false');
-    }
-  }, []);
-
   const handleDisconnected = useCallback(() => {
     console.log('Disconnected event received');
     setStatus('disconnected');
@@ -51,17 +55,21 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
     localStorage.setItem('techtaire_whatsapp_connected', 'false');
   }, []);
 
-  const handleConnectError = useCallback((err: any) => {
-    console.error('Socket connection error:', err);
-    setError('Socket connection error. Please check your internet.');
-    setStatus('error');
-  }, []);
-
+  const socketRef = useRef<any>(null);
   const initializing = useRef(false);
+
+  const cleanupSocket = useCallback(() => {
+    if (socketRef.current) {
+      socketRef.current.off('qr');
+      socketRef.current.off('connected');
+      socketRef.current.off('disconnected');
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+  }, []);
 
   const initSession = async () => {
     if (!userId || userId === 'anonymous') {
-      console.warn('Cannot initialize WhatsApp session: userId is invalid');
       setError('Please log in to connect WhatsApp.');
       setStatus('error');
       return;
@@ -75,69 +83,38 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
     console.log('Initializing WhatsApp session for user:', userId);
 
     try {
-      // 1. Socket connect karo
-      connectSocket(userId);
+      cleanupSocket();
+
+      // 1. Socket connect
+      const socket = (window as any).io(SERVER_URL, {
+        reconnection: true,
+      });
+      socketRef.current = socket;
       console.log('Socket initialized');
 
-      // 2. Room join karo
-      joinRoom(userId);
+      // 2. Room join
+      socket.on('connect', () => {
+        console.log('Socket connected, joining room:', userId);
+        socket.emit('join', userId);
+      });
 
-      // 3. Socket listeners add karo (Remove old ones first to avoid duplicates)
-      offSocketEvent('qr', handleQr);
-      offSocketEvent('connected', handleConnected);
-      offSocketEvent('session_status', handleSessionStatus);
-      offSocketEvent('disconnected', handleDisconnected);
-      offSocketEvent('connect_error', handleConnectError);
+      // 3. Socket listeners
+      socket.on('qr', handleQr);
+      socket.on('connected', handleConnected);
+      socket.on('disconnected', handleDisconnected);
 
-      onSocketEvent('qr', handleQr);
-      onSocketEvent('connected', handleConnected);
-      onSocketEvent('session_status', handleSessionStatus);
-      onSocketEvent('disconnected', handleDisconnected);
-      onSocketEvent('connect_error', handleConnectError);
-
-      // 4. Session start karo
+      // 4. Session start
       console.log('Starting session via API...');
-      try {
-        const result = await startSession(userId);
-        console.log('Session start API call completed:', result);
-        
-        // If the API returns the QR directly, use it
-        if (result && result.qr) {
-          handleQr(result.qr);
-        }
-      } catch (apiErr: any) {
-        // If session is already starting, it might return 400, but we can still wait for QR
-        console.warn('API startSession failed, but socket might still receive QR:', apiErr.message);
-        if (apiErr.response?.status === 400 && apiErr.response?.data?.error?.includes('already')) {
-          console.log('Session already starting, waiting for QR...');
-        } else if (apiErr.response?.status === 429) {
-          setError('Too many requests. Please wait a minute and try again.');
-          setStatus('error');
-          initializing.current = false;
-          return;
-        } else {
-          // If it's a network error, we might still get QR via socket if backend started it
-          if (apiErr.message === 'Network Error') {
-            console.log('Network error on API, but socket might still work. Waiting...');
-          } else {
-            throw apiErr;
-          }
-        }
+      const result = await startSession(userId);
+      
+      // If the API returns the QR directly, use it
+      if (result && result.qr) {
+        handleQr(result.qr);
       }
 
     } catch (err: any) {
       console.error('Failed to initialize WhatsApp session:', err);
-      const errorMessage = err.response?.data?.error || err.message || 'Unknown error';
-      
-      if (err.response?.status === 429) {
-        setError('Too many requests. Please wait a minute and try again.');
-      } else if (err.response?.status === 404) {
-        setError('WhatsApp server not found. Please check your configuration.');
-      } else if (err.message === 'Network Error') {
-        setError('Network Error: Could not connect to the WhatsApp server. This might be a CORS issue or the server is down.');
-      } else {
-        setError(`Failed to initialize WhatsApp session: ${errorMessage}`);
-      }
+      setError(`Failed to initialize WhatsApp session: ${err.message}`);
       setStatus('error');
     } finally {
       initializing.current = false;
@@ -163,13 +140,12 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
           localStorage.setItem('techtaire_whatsapp_connected', 'true');
           
           // Connect socket to listen for disconnects
-          connectSocket(userId);
-          joinRoom(userId);
-          
-          offSocketEvent('session_status', handleSessionStatus);
-          offSocketEvent('disconnected', handleDisconnected);
-          onSocketEvent('session_status', handleSessionStatus);
-          onSocketEvent('disconnected', handleDisconnected);
+          if (!socketRef.current) {
+            const socket = (window as any).io(SERVER_URL, { reconnection: true });
+            socketRef.current = socket;
+            socket.on('connect', () => socket.emit('join', userId));
+            socket.on('disconnected', handleDisconnected);
+          }
         } else {
           setStatus('idle');
           localStorage.setItem('techtaire_whatsapp_connected', 'false');
@@ -186,13 +162,9 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
 
     return () => {
       mounted = false;
-      offSocketEvent('qr', handleQr);
-      offSocketEvent('connected', handleConnected);
-      offSocketEvent('session_status', handleSessionStatus);
-      offSocketEvent('disconnected', handleDisconnected);
-      offSocketEvent('connect_error', handleConnectError);
+      cleanupSocket();
     };
-  }, [userId, handleQr, handleConnected, handleSessionStatus, handleDisconnected, handleConnectError]);
+  }, [userId, handleQr, handleConnected, handleDisconnected, cleanupSocket]);
 
   const handleDisconnect = async () => {
     try {
@@ -200,14 +172,14 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
     } catch (err) {
       console.error('Failed to logout session on server', err);
     }
-    disconnectSocket();
+    cleanupSocket();
     setStatus('idle');
     localStorage.setItem('techtaire_whatsapp_connected', 'false');
   };
 
   return (
     <div className="glass-panel p-6 rounded-2xl flex flex-col items-center justify-center space-y-4">
-      {(status === 'idle' || status === 'disconnected') && (
+      {status === 'idle' && (
         <div className="text-center space-y-4">
           <div className="w-16 h-16 bg-amethyst/20 rounded-full flex items-center justify-center mx-auto text-amethyst">
             <Smartphone size={32} />
@@ -226,6 +198,13 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
         </div>
       )}
 
+      {status === 'disconnected' && (
+        <div className="text-center space-y-4">
+          <AlertCircle className="text-amber-500 mx-auto" size={48} />
+          <p className="text-amber-500 font-bold">Disconnected. Reconnecting...</p>
+        </div>
+      )}
+
       {status === 'loading' && (
         <>
           <Loader2 className="animate-spin text-amethyst" size={48} />
@@ -235,8 +214,7 @@ const WhatsAppConnect: React.FC<WhatsAppConnectProps> = ({ userId }) => {
 
       {status === 'qr' && qrCode && (
         <>
-          <div className="bg-white p-2 rounded-xl">
-            <img src={qrCode} alt="WhatsApp QR Code" className="w-64 h-64" />
+          <div id="qrcode-container" className="bg-white p-2 rounded-xl w-64 h-64 flex items-center justify-center">
           </div>
           <p className="text-soft-lavender/60 text-sm">
             Scan with WhatsApp → Linked Devices

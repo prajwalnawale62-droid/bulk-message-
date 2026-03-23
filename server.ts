@@ -154,52 +154,6 @@ async function startServer() {
     }
   });
 
-  // --- WhatsApp API Routes ---
-  app.post("/api/whatsapp/send", async (req, res) => {
-    const { to, message, apiKey, phoneNumberId, attachmentUrl } = req.body;
-
-    if (!apiKey || !phoneNumberId) {
-      return res.status(400).json({ error: "WhatsApp API credentials missing" });
-    }
-
-    try {
-      let data: any = {
-        messaging_product: "whatsapp",
-        recipient_type: "individual",
-        to: to,
-      };
-
-      if (attachmentUrl) {
-        // If there's an attachment, we use a template or media message
-        // For simplicity, let's assume it's an image if attachmentUrl is present
-        data.type = "image";
-        data.image = {
-          link: attachmentUrl,
-          caption: message
-        };
-      } else {
-        data.type = "text";
-        data.text = { body: message };
-      }
-
-      const response = await axios.post(
-        `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
-        data,
-        {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      res.json(response.data);
-    } catch (error: any) {
-      console.error("WhatsApp API Error:", error.response?.data || error.message);
-      res.status(error.response?.status || 500).json(error.response?.data || { error: error.message });
-    }
-  });
-
   const httpServer = createServer(app);
   const io = new SocketIOServer(httpServer, {
     cors: {

@@ -7,7 +7,8 @@ export const getServerUrl = () => {
   if (!stored) return window.location.origin;
 
   // If running on AI Studio, always use relative URLs to avoid cross-environment issues
-  if (window.location.hostname.includes('.run.app')) {
+  // Unless explicitly overridden by the user
+  if (window.location.hostname.includes('.run.app') && !stored.includes('railway.app')) {
     console.warn("Ignoring whatsapp_server_url because app is running on AI Studio. Using relative URL.");
     return window.location.origin;
   }
@@ -25,6 +26,12 @@ export const getServerUrl = () => {
   }
 
   const cleanUrl = stored.replace(/\/$/, '');
+  
+  // If the user provided a full URL, use it directly
+  if (cleanUrl.startsWith('http')) {
+    return cleanUrl;
+  }
+
   if (cleanUrl.endsWith('/api/whatsapp-server')) {
     return cleanUrl.replace('/api/whatsapp-server', '');
   }

@@ -7,7 +7,8 @@ export function getBaseUrl() {
   if (!stored) return '/api/whatsapp-server';
 
   // If running on AI Studio, always use relative URLs to avoid cross-environment issues
-  if (window.location.hostname.includes('.run.app')) {
+  // Unless explicitly overridden by the user
+  if (window.location.hostname.includes('.run.app') && !stored.includes('railway.app')) {
     console.warn("Ignoring whatsapp_server_url because app is running on AI Studio. Using relative URL.");
     return '/api/whatsapp-server';
   }
@@ -25,6 +26,12 @@ export function getBaseUrl() {
   }
 
   const cleanUrl = stored.replace(/\/$/, '');
+  
+  // If the user provided a full URL, use it directly
+  if (cleanUrl.startsWith('http')) {
+    return cleanUrl;
+  }
+
   if (cleanUrl.endsWith('/api/whatsapp-server')) {
     return cleanUrl;
   }
@@ -34,6 +41,22 @@ export function getBaseUrl() {
 export async function startSession(userId: string) {
   const BASE_URL = getBaseUrl();
   console.log(`Calling startSession for ${userId} at ${BASE_URL}/session/start`);
+  
+  // If hitting the Railway server from browser, use proxy to avoid CORS
+  if (BASE_URL.includes('railway.app') && typeof window !== 'undefined') {
+    try {
+      const response = await axios.post(`/api/whatsapp/proxy`, {
+        url: `/session/start`,
+        method: 'POST',
+        body: { userId }
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('Error starting session via proxy:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
   try {
     const response = await axios.post(`${BASE_URL}/session/start`, { userId }, {
       headers: {
@@ -52,87 +75,6 @@ export async function startSession(userId: string) {
 }
 
 export async function sendMessages(userId: string, messages: {number: string, message: string}[], attachmentUrl?: string | null) {
-  const metaAccessToken = localStorage.getItem('meta_access_token');
-  const metaPhoneId = localStorage.getItem('meta_phone_id');
-
-  if (metaAccessToken && metaPhoneId) {
-    // Send via Meta API
-    let sentCount = 0;
-    let mediaId: string | null = null;
-    let mediaType = "image";
-
-    if (attachmentUrl && attachmentUrl.startsWith('data:')) {
-      try {
-        const res = await fetch(attachmentUrl);
-        const blob = await res.blob();
-        const formData = new FormData();
-        formData.append('file', blob, 'attachment');
-        formData.append('messaging_product', 'whatsapp');
-        
-        const uploadRes = await axios.post(`https://graph.facebook.com/v18.0/${metaPhoneId}/media`, formData, {
-          headers: {
-            'Authorization': `Bearer ${metaAccessToken}`
-          }
-        });
-        mediaId = uploadRes.data.id;
-        
-        const mimeType = attachmentUrl.split(';')[0].split(':')[1];
-        if (mimeType.startsWith('video/')) mediaType = "video";
-        else if (mimeType.startsWith('image/')) mediaType = "image";
-        else mediaType = "document";
-      } catch (err: any) {
-        console.error('Failed to upload media to Meta:', err.response?.data || err.message);
-        throw new Error(`Media upload failed: ${JSON.stringify(err.response?.data || err.message)}`);
-      }
-    }
-
-    for (const msg of messages) {
-      try {
-        // Ensure phone number has no '+' and is a string
-        const formattedNumber = msg.number.replace('+', '');
-        
-        const payload: any = {
-          messaging_product: "whatsapp",
-          to: formattedNumber,
-        };
-        
-        if (mediaId) {
-          payload.type = mediaType;
-          payload[mediaType] = {
-            id: mediaId,
-            caption: msg.message
-          };
-          if (mediaType === 'document') {
-            payload[mediaType].filename = 'attachment';
-          }
-        } else if (attachmentUrl && !attachmentUrl.startsWith('data:')) {
-          payload.type = "image";
-          payload.image = {
-            link: attachmentUrl,
-            caption: msg.message
-          };
-        } else {
-          payload.type = "text";
-          payload.text = { body: msg.message };
-        }
-        
-        await axios.post(`https://graph.facebook.com/v18.0/${metaPhoneId}/messages`, payload, {
-          headers: {
-            'Authorization': `Bearer ${metaAccessToken}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        sentCount++;
-        // Add a small delay to avoid rate limits
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } catch (err: any) {
-        console.error('Meta API error for number', msg.number, ':', err.response?.data || err.message);
-        throw new Error(`Meta API error: ${JSON.stringify(err.response?.data || err.message)}`);
-      }
-    }
-    return { success: true, sent: sentCount };
-  }
-
   const BASE_URL = getBaseUrl();
   const payload: any = { 
     userId, 
@@ -154,6 +96,24 @@ export async function sendMessages(userId: string, messages: {number: string, me
 
 export async function getStats(userId: string) {
   const BASE_URL = getBaseUrl();
+
+  // If hitting the Railway server from browser, use proxy to avoid CORS
+  if (BASE_URL.includes('railway.app') && typeof window !== 'undefined') {
+    try {
+      const response = await axios.post(`/api/whatsapp/proxy`, {
+        url: `/messages/stats/${encodeURIComponent(userId)}`,
+        method: 'GET'
+      });
+      return response.data;
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        return { sent: 0, delivered: 0, failed: 0 };
+      }
+      console.error('Error getting stats via proxy:', error.response?.data || error.message);
+      return { sent: 0, delivered: 0, failed: 0 };
+    }
+  }
+
   try {
     const response = await axios.get(`${BASE_URL}/messages/stats/${encodeURIComponent(userId)}`);
     return response.data;
@@ -169,6 +129,24 @@ export async function getStats(userId: string) {
 
 export async function getStatus(userId: string) {
   const BASE_URL = getBaseUrl();
+  
+  // If hitting the Railway server from browser, use proxy to avoid CORS
+  if (BASE_URL.includes('railway.app') && typeof window !== 'undefined') {
+    try {
+      const response = await axios.post(`/api/whatsapp/proxy`, {
+        url: `/session/status/${encodeURIComponent(userId)}`,
+        method: 'GET'
+      });
+      return response.data.status;
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        return 'disconnected';
+      }
+      console.error('Error getting status via proxy:', error.response?.data || error.message);
+      return 'error';
+    }
+  }
+
   try {
     const response = await axios.get(`${BASE_URL}/session/status/${encodeURIComponent(userId)}`);
     return response.data.status;
@@ -183,6 +161,17 @@ export async function getStatus(userId: string) {
 
 export async function logoutSession(userId: string) {
   const BASE_URL = getBaseUrl();
+
+  // If hitting the Railway server from browser, use proxy to avoid CORS
+  if (BASE_URL.includes('railway.app') && typeof window !== 'undefined') {
+    const response = await axios.post(`/api/whatsapp/proxy`, {
+      url: `/session/logout`,
+      method: 'POST',
+      body: { userId }
+    });
+    return response.data;
+  }
+
   const response = await axios.post(`${BASE_URL}/session/logout`, { userId });
   return response.data;
 }
