@@ -2,6 +2,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import { Server as SocketIOServer } from "socket.io";
 import { createServer } from "http";
+import path from "path";
 import { 
   initWhatsAppService, 
   startWhatsAppSession, 
@@ -210,32 +211,50 @@ async function startServer() {
         return res.status(400).json({ error: "Invalid payload" });
       }
 
-      const results = [];
-      let sent = 0;
-      for (const msg of messages) {
-        try {
-          await sendWhatsAppMessage(userId, msg.number, msg.message, mediaUrl);
-          results.push({ number: msg.number, status: 'sent' });
-          sent++;
-          io.to(userId).emit('message_sent', { sent });
-          
-          // Add a small delay to avoid spam detection
-          if (sent % 10 === 0) {
-            io.to(userId).emit('burst_gap');
-            await new Promise(resolve => setTimeout(resolve, 3000));
-          } else {
-            await new Promise(resolve => setTimeout(resolve, 500));
-          }
-        } catch (error: any) {
-          results.push({ number: msg.number, status: 'failed', error: error.message });
-        }
-      }
+      // Return immediately to avoid timeout
+      res.json({ success: true, message: "Sending process started in background", total: messages.length });
 
-      io.to(userId).emit('queue_complete');
-      res.json({ success: true, results });
+      // Process in background
+      (async () => {
+        let sent = 0;
+        let failed = 0;
+        for (const msg of messages) {
+          try {
+            await sendWhatsAppMessage(userId, msg.number, msg.message, mediaUrl);
+            sent++;
+            io.to(userId).emit('message_sent', { 
+              sent, 
+              total: messages.length,
+              number: msg.number,
+              status: 'sent'
+            });
+            
+            // Add a small delay to avoid spam detection
+            if (sent % 10 === 0) {
+              io.to(userId).emit('burst_gap');
+              await new Promise(resolve => setTimeout(resolve, 3000));
+            } else {
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+          } catch (error: any) {
+            failed++;
+            io.to(userId).emit('message_sent', { 
+              sent, 
+              failed,
+              total: messages.length,
+              number: msg.number, 
+              status: 'failed', 
+              error: error.message 
+            });
+          }
+        }
+        io.to(userId).emit('queue_complete', { sent, failed, total: messages.length });
+      })();
     } catch (error: any) {
-      console.error("Error sending messages:", error);
-      res.status(500).json({ error: error.message });
+      console.error("Error starting message queue:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: error.message });
+      }
     }
   });
 
@@ -544,8 +563,17 @@ async function startServer() {
       console.log(`Proxy success for ${url}:`, response.status);
       res.json(response.data);
     } catch (err: any) {
-      console.error(`Proxy error for ${url}:`, err.response?.status, err.response?.data || err.message);
-      res.status(err.response?.status || 500).json(err.response?.data || { message: err.message });
+      const status = err.response?.status || 500;
+      const data = err.response?.data;
+      
+      // Don't log 404 as an error, it's a common state (session not found)
+      if (status === 404) {
+        console.log(`Proxy info for ${url}: 404 Session not found`);
+      } else {
+        console.error(`Proxy error for ${url}:`, status, data || err.message);
+      }
+      
+      res.status(status).json(data || { message: err.message });
     }
   });
 
@@ -664,9 +692,10 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static("dist"));
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
     app.get("*", (req, res) => {
-      res.sendFile("dist/index.html", { root: "." });
+      res.sendFile(path.join(distPath, "index.html"));
     });
   }
 

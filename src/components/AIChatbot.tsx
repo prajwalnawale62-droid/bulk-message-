@@ -246,10 +246,13 @@ export const AIChatbot = ({ user }: { user: any }) => {
                   name: "sendWhatsAppMessage",
                   response: data
                 });
-              } catch (err) {
+              } catch (err: any) {
+                const errorMsg = err.response?.data?.error === 'WhatsApp not connected' || err.message?.includes('400')
+                  ? "WhatsApp is disconnected. Please scan the QR code to connect."
+                  : "Failed to send message.";
                 functionResponses.push({
                   name: "sendWhatsAppMessage",
-                  response: { error: "Failed to send message." }
+                  response: { error: errorMsg }
                 });
               }
             }
@@ -269,10 +272,13 @@ export const AIChatbot = ({ user }: { user: any }) => {
                   name: "sendBulkWhatsAppMessages",
                   response: data
                 });
-              } catch (err) {
+              } catch (err: any) {
+                const errorMsg = err.response?.data?.error === 'WhatsApp not connected' || err.message?.includes('400')
+                  ? "WhatsApp is disconnected. Please scan the QR code to connect."
+                  : "Failed to send bulk messages.";
                 functionResponses.push({
                   name: "sendBulkWhatsAppMessages",
-                  response: { error: "Failed to send bulk messages." }
+                  response: { error: errorMsg }
                 });
               }
             }

@@ -70,7 +70,7 @@ import { io, Socket } from 'socket.io-client';
 import { AIChatbot } from './components/AIChatbot';
 import WhatsAppConnect from './components/WhatsAppConnect';
 import { joinRoom, getSocket } from './lib/socketManager';
-import { sendMessages, getStats } from './lib/whatsappApi';
+import { sendMessages, getStats, getStatus } from './lib/whatsappApi';
 import { 
   LineChart, 
   Line, 
@@ -3391,7 +3391,19 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
         return;
       }
 
-      // 1. Fetch user's contacts
+      // 1. Check WhatsApp connection status first
+      try {
+        const status = await getStatus(user.email);
+        if (status !== 'connected') {
+          showNotify("WhatsApp is not connected. Please go to the WhatsApp Connect section and scan the QR code.", "error");
+          setSending(false);
+          return;
+        }
+      } catch (err) {
+        console.error("Failed to check status", err);
+      }
+
+      // 2. Fetch user's contacts
       let query = supabase
         .from('contacts')
         .select('whatsapp_number')
@@ -3430,7 +3442,12 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
         const socket = getSocket();
         
         socket?.on('message_sent', (data: any) => {
-          setSendingProgress(`Sent ${data.sent} of ${messages.length} messages...`);
+          setSendingProgress(`Sent ${data.sent} of ${data.total} messages...`);
+          if (data.status === 'sent') {
+            showNotify(`Message sent to ${data.number} ✅`, "success");
+          } else {
+            showNotify(`Failed to send to ${data.number}: ${data.error} ❌`, "error");
+          }
         });
         
         socket?.on('burst_gap', () => {
@@ -3441,53 +3458,41 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
           showNotify("Daily limit of 3000 messages reached", "error");
         });
         
-        socket?.on('queue_complete', () => {
-          showNotify("All messages sent successfully! ✅", "success");
+        socket?.on('queue_complete', async (data: any) => {
+          showNotify(`Bulk sending complete! Sent: ${data.sent}, Failed: ${data.failed} of ${data.total} ✅`, "success");
           setSending(false);
           setSendingProgress('');
+
+          // Log campaign as completed
+          await supabase.from('campaigns').insert([{
+            user_id: user.id,
+            name: `Campaign ${new Date().toLocaleString()}`,
+            message_template: message,
+            status: 'completed',
+            batch: selectedBatch,
+            attachment_url: attachmentPreview,
+            total_messages: data.total,
+            sent_messages: data.sent
+          }]);
         });
 
         const response = await sendMessages(user.email, messages, attachmentPreview);
         
-        let sentCount = contacts.length;
-        if (response && response.results) {
-          const failed = response.results.filter((r: any) => r.status === 'failed');
-          if (failed.length === messages.length) {
-             throw new Error(`All messages failed. Reason: ${failed[0].error}`);
-          } else if (failed.length > 0) {
-             showNotify(`${failed.length} messages failed to send.`, "warning");
-             sentCount = messages.length - failed.length;
-          }
-        } else if (response && response.sent !== undefined) {
-          if (response.sent === 0 && messages.length > 0) {
-            throw new Error(`All messages failed. Please ensure numbers include country codes and your WhatsApp session is connected.`);
-          } else if (response.sent < messages.length) {
-             showNotify(`${messages.length - response.sent} messages failed to send.`, "warning");
-          }
-          sentCount = response.sent;
+        if (response && response.success) {
+          showNotify("Bulk sending started in background... 🚀", "info");
+          // We don't setSending(false) here because we wait for queue_complete
+          // but we can clear the message input
+          setMessage('');
+          setAttachment(null);
+          setAttachmentPreview(null);
         }
-        
-        // 3. Log campaign
-        await supabase.from('campaigns').insert([{
-          user_id: user.id,
-          name: `Campaign ${new Date().toLocaleString()}`,
-          message_template: message,
-          status: 'completed',
-          batch: selectedBatch,
-          attachment_url: attachmentPreview,
-          total_messages: contacts.length,
-          sent_messages: sentCount
-        }]);
-        
-        showNotify("Campaign sent successfully!", "success");
-        
-        setMessage('');
-        setAttachment(null);
-        setAttachmentPreview(null);
-        setSendingProgress('');
       } catch (err: any) {
         console.error("Failed to send", err);
-        showNotify(`Failed to send: ${err.message}`, "error");
+        let errorMsg = err.message;
+        if (err.response?.data?.error === 'WhatsApp not connected' || err.message?.includes('400')) {
+          errorMsg = "WhatsApp not connected. Please go to the WhatsApp Connect section and scan the QR code.";
+        }
+        showNotify(`Failed to send: ${errorMsg}`, "error");
         setSending(false);
         setSendingProgress('');
         return;
@@ -4376,6 +4381,7 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
 
   useEffect(() => {
     const fetchStats = async () => {
+      if (!user?.email) return;
       try {
         const stats = await getStats(user.email);
         setWaStats(stats);
