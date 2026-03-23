@@ -101,7 +101,7 @@ export const getWhatsAppStats = (userId: string) => {
   return stats.get(userId) || { sent: 0, delivered: 0, failed: 0 };
 };
 
-export const sendWhatsAppMessage = async (userId: string, to: string, message: string) => {
+export const sendWhatsAppMessage = async (userId: string, to: string, message: string, mediaUrl?: string) => {
   const sock = sessions.get(userId);
   if (!sock) {
     throw new Error('WhatsApp session not found or not connected');
@@ -109,7 +109,48 @@ export const sendWhatsAppMessage = async (userId: string, to: string, message: s
 
   try {
     const jid = `${to}@s.whatsapp.net`;
-    await sock.sendMessage(jid, { text: message });
+    
+    // Verify if number exists on WhatsApp
+    const [result] = await sock.onWhatsApp(jid);
+    if (!result || !result.exists) {
+      throw new Error(`Number ${to} is not registered on WhatsApp`);
+    }
+    
+    const actualJid = result.jid;
+    
+    if (mediaUrl) {
+      if (mediaUrl.startsWith('data:')) {
+        const mimeType = mediaUrl.split(';')[0].split(':')[1];
+        const base64Data = mediaUrl.split(',')[1];
+        const buffer = Buffer.from(base64Data, 'base64');
+        
+        if (mimeType.startsWith('video/')) {
+          await sock.sendMessage(actualJid, { 
+            video: buffer, 
+            caption: message 
+          });
+        } else if (mimeType.startsWith('image/')) {
+          await sock.sendMessage(actualJid, { 
+            image: buffer, 
+            caption: message 
+          });
+        } else {
+          await sock.sendMessage(actualJid, { 
+            document: buffer, 
+            mimetype: mimeType,
+            fileName: 'attachment',
+            caption: message 
+          });
+        }
+      } else {
+        await sock.sendMessage(actualJid, { 
+          image: { url: mediaUrl }, 
+          caption: message 
+        });
+      }
+    } else {
+      await sock.sendMessage(actualJid, { text: message });
+    }
     
     const userStats = stats.get(userId)!;
     userStats.sent++;

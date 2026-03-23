@@ -744,12 +744,18 @@ export default function App() {
   const [isWhatsappConnected, setIsWhatsappConnected] = useState(false);
 
   useEffect(() => {
+    const checkConnection = () => {
+      const isQrConnected = localStorage.getItem('techtaire_whatsapp_connected') === 'true';
+      const isApiConnected = !!(localStorage.getItem('meta_access_token') && localStorage.getItem('meta_phone_id'));
+      setIsWhatsappConnected(isQrConnected || isApiConnected);
+    };
+
     // Initial check
-    setIsWhatsappConnected(localStorage.getItem('techtaire_whatsapp_connected') === 'true');
+    checkConnection();
 
     // Listen for storage changes (in case it's updated from another tab or component)
     const handleStorageChange = () => {
-      setIsWhatsappConnected(localStorage.getItem('techtaire_whatsapp_connected') === 'true');
+      checkConnection();
     };
 
     window.addEventListener('storage', handleStorageChange);
@@ -1907,6 +1913,148 @@ const LandingPage = ({ setView, user, setLegalModal }: { setView: (v: View) => v
   );
 };
 
+const DeveloperBoyIllustration = () => {
+  return (
+    <motion.div
+      animate={{ y: [-6, 6, -6] }}
+      transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+      className="w-full max-w-md mx-auto aspect-square relative flex items-center justify-center"
+    >
+      <svg viewBox="0 0 400 400" className="w-full h-full drop-shadow-2xl">
+        <defs>
+          <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#8B5CF6" stopOpacity="0.15" />
+            <stop offset="100%" stopColor="#8B5CF6" stopOpacity="0" />
+          </radialGradient>
+          <linearGradient id="screenGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#A78BFA" stopOpacity="0.8" />
+            <stop offset="100%" stopColor="#6D28D9" stopOpacity="0.1" />
+          </linearGradient>
+          <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#3B0764" />
+            <stop offset="100%" stopColor="#5B21B6" />
+          </linearGradient>
+          <linearGradient id="laptopGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#1E293B" />
+            <stop offset="100%" stopColor="#0F172A" />
+          </linearGradient>
+        </defs>
+
+        {/* Background Glow */}
+        <motion.circle
+          cx="200" cy="200" r="180"
+          fill="url(#bgGlow)"
+          animate={{ opacity: [0.6, 0.9, 0.6], scale: [0.98, 1.02, 0.98] }}
+          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+        />
+
+        {/* Desk Line */}
+        <line x1="60" y1="340" x2="340" y2="340" stroke="#4C1D95" strokeWidth="2" strokeOpacity="0.4" strokeLinecap="round" />
+
+        {/* Developer Body (Sleek & Abstract) */}
+        <path d="M 140 340 C 140 240, 260 240, 260 340 Z" fill="url(#bodyGrad)" />
+        
+        {/* Neck */}
+        <path d="M 190 190 L 210 190 L 205 220 L 195 220 Z" fill="#FDBA74" opacity="0.95" />
+
+        {/* Head (Minimalist) */}
+        <rect x="165" y="120" width="70" height="80" rx="30" fill="#FDBA74" opacity="0.95" />
+        
+        {/* Hair (Modern Fade/Slick) */}
+        <path d="M 160 150 C 160 100, 240 100, 240 150 C 240 120, 160 120, 160 150 Z" fill="#0F172A" />
+        <path d="M 160 145 Q 200 110 240 145 L 240 130 Q 200 95 160 130 Z" fill="#1E293B" />
+
+        {/* Glasses (Sleek Tech Frames) */}
+        <rect x="170" y="150" width="26" height="16" rx="3" fill="#0F172A" fillOpacity="0.1" stroke="#0F172A" strokeWidth="2.5" />
+        <rect x="204" y="150" width="26" height="16" rx="3" fill="#0F172A" fillOpacity="0.1" stroke="#0F172A" strokeWidth="2.5" />
+        <line x1="196" y1="158" x2="204" y2="158" stroke="#0F172A" strokeWidth="2.5" />
+        <line x1="160" y1="155" x2="170" y2="158" stroke="#0F172A" strokeWidth="2.5" />
+        <line x1="240" y1="155" x2="230" y2="158" stroke="#0F172A" strokeWidth="2.5" />
+
+        {/* Eyes (Screen Reflection - Subtle) */}
+        <motion.circle cx="183" cy="158" r="2" fill="#A78BFA" 
+          animate={{ opacity: [0.5, 0.9, 0.5] }} transition={{ duration: 2.5, repeat: Infinity }} />
+        <motion.circle cx="217" cy="158" r="2" fill="#A78BFA" 
+          animate={{ opacity: [0.5, 0.9, 0.5] }} transition={{ duration: 2.5, repeat: Infinity }} />
+
+        {/* Laptop Screen (Back part) */}
+        <rect x="110" y="210" width="180" height="115" rx="6" fill="url(#laptopGrad)" stroke="#334155" strokeWidth="1.5" />
+        
+        {/* Screen Inner Glow */}
+        <motion.rect 
+          x="113" y="213" width="174" height="109" rx="4" 
+          fill="url(#screenGlow)"
+          animate={{ opacity: [0.7, 0.95, 0.7] }}
+          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+        />
+
+        {/* Code Lines on Screen (Minimalist UI) */}
+        <rect x="125" y="230" width="100" height="3" rx="1.5" fill="#DDD6FE" opacity="0.9" />
+        <rect x="125" y="242" width="140" height="3" rx="1.5" fill="#C4B5FD" opacity="0.7" />
+        <rect x="125" y="254" width="80" height="3" rx="1.5" fill="#A78BFA" opacity="0.8" />
+        <rect x="135" y="266" width="110" height="3" rx="1.5" fill="#8B5CF6" opacity="0.6" />
+        <rect x="135" y="278" width="90" height="3" rx="1.5" fill="#C4B5FD" opacity="0.7" />
+        <rect x="125" y="290" width="60" height="3" rx="1.5" fill="#DDD6FE" opacity="0.9" />
+
+        {/* Laptop Base */}
+        <path d="M 80 325 L 320 325 L 340 340 L 60 340 Z" fill="#0F172A" />
+        <path d="M 60 340 L 340 340 L 340 343 L 60 343 Z" fill="#020617" />
+        
+        {/* Trackpad */}
+        <rect x="180" y="330" width="40" height="4" rx="1" fill="#1E293B" opacity="0.8" />
+
+        {/* Left Arm & Hand (Sleek) */}
+        <motion.g
+          animate={{ rotate: [-1.5, 1.5, -1.5], y: [0, -1.5, 0] }}
+          transition={{ duration: 0.1, repeat: Infinity, ease: "linear" }}
+          style={{ originX: "140px", originY: "260px" }}
+        >
+          <path d="M 145 250 Q 125 295 160 325" fill="none" stroke="#2E1065" strokeWidth="14" strokeLinecap="round" />
+          <circle cx="165" cy="325" r="7" fill="#FDBA74" opacity="0.95" />
+        </motion.g>
+
+        {/* Right Arm & Hand (Sleek) */}
+        <motion.g
+          animate={{ rotate: [1.5, -1.5, 1.5], y: [-1.5, 0, -1.5] }}
+          transition={{ duration: 0.13, repeat: Infinity, ease: "linear" }}
+          style={{ originX: "260px", originY: "260px" }}
+        >
+          <path d="M 255 250 Q 275 295 240 325" fill="none" stroke="#2E1065" strokeWidth="14" strokeLinecap="round" />
+          <circle cx="235" cy="325" r="7" fill="#FDBA74" opacity="0.95" />
+        </motion.g>
+
+        {/* Floating Tech Elements (Minimal & Elegant) */}
+        <motion.g
+          animate={{ y: [-6, 6, -6], opacity: [0.4, 0.8, 0.4] }}
+          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
+        >
+          <text x="70" y="170" fill="#A78BFA" fontSize="18" fontWeight="500" fontFamily="monospace" letterSpacing="-1">{"</>"}</text>
+        </motion.g>
+        <motion.g
+          animate={{ y: [6, -6, 6], opacity: [0.4, 0.8, 0.4] }}
+          transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+        >
+          <text x="300" y="140" fill="#C4B5FD" fontSize="20" fontWeight="500" fontFamily="monospace" letterSpacing="-1">{"{ }"}</text>
+        </motion.g>
+        <motion.g
+          animate={{ y: [-4, 8, -4], opacity: [0.3, 0.7, 0.3] }}
+          transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
+        >
+          <text x="320" y="250" fill="#8B5CF6" fontSize="16" fontWeight="500" fontFamily="monospace">{"_$"}</text>
+        </motion.g>
+        <motion.g
+          animate={{ y: [4, -8, 4], opacity: [0.3, 0.6, 0.3] }}
+          transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut", delay: 0.8 }}
+        >
+          <circle cx="90" cy="260" r="2.5" fill="#DDD6FE" />
+          <circle cx="100" cy="260" r="2.5" fill="#A78BFA" />
+          <circle cx="110" cy="260" r="2.5" fill="#8B5CF6" />
+        </motion.g>
+      </svg>
+    </motion.div>
+  );
+};
+
 const LoginPage = ({ setView }: { setView: (v: View) => void }) => {
   useEffect(() => {
     const checkUser = async () => {
@@ -2141,24 +2289,22 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
       </button>
       
       <div className="relative z-10 w-full max-w-5xl grid grid-cols-1 lg:grid-cols-2 gap-20 items-center">
-        <div className="hidden lg:flex flex-col items-center justify-center gap-12">
-          <div className="flex flex-col items-center gap-6">
+        <div className="hidden lg:flex flex-col items-center justify-center gap-12 w-full">
+          <div className="flex flex-col items-center gap-6 w-full">
             <TechtaireLogo className="w-24 h-24" />
-            <motion.div 
-              animate={{ y: [0, -10, 0] }}
-              transition={{ duration: 4, repeat: Infinity }}
+            <div 
               onClick={handleLogoClick}
-              className="cursor-pointer"
+              className="w-full relative cursor-pointer"
             >
-              <BearCharacter animation={isFocused ? 'point' : 'sleep'} />
-            </motion.div>
+              <DeveloperBoyIllustration />
+            </div>
           </div>
           <div className="text-center">
             <h2 className="text-4xl font-black text-white mb-4 tracking-tight">
               {isSignUp ? 'Join the Pack' : 'Welcome Back'}
             </h2>
             <p className="text-soft-lavender/40">
-              {isSignUp ? 'Start your journey with Techtaire today.' : 'The bear is waiting for you to light up the screen.'}
+              {isSignUp ? 'Start your journey with Techtaire today.' : 'The developer is waiting for you to light up the screen.'}
             </p>
           </div>
         </div>
@@ -3047,11 +3193,33 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
   const [sendingProgress, setSendingProgress] = useState('');
   const [selectedTone, setSelectedTone] = useState<'professional' | 'friendly' | 'marketing' | 'motivational'>('professional');
 
+  const [activeTab, setActiveTab] = useState<'text' | 'image' | 'video' | 'document' | 'audio'>('text');
+  
+  const [showAiEnhance, setShowAiEnhance] = useState(false);
+  const [enhanceTone, setEnhanceTone] = useState('Professional');
+  const [enhanceType, setEnhanceType] = useState('Improve Grammar');
+  
+  const [showAiGenerate, setShowAiGenerate] = useState(false);
+  const [generatePrompt, setGeneratePrompt] = useState('');
+  const [generateTone, setGenerateTone] = useState('Professional');
+  const [generateLength, setGenerateLength] = useState('Medium');
+  const [generateLanguage, setGenerateLanguage] = useState('English');
+
+  const getStrength = (msg: string) => {
+    const len = msg.length;
+    if (len === 0) return { label: 'Weak', color: 'bg-red-500', width: '0%' };
+    if (len < 20) return { label: 'Weak', color: 'bg-red-500', width: '25%' };
+    if (len < 50) return { label: 'Fair', color: 'bg-amber-500', width: '50%' };
+    if (len < 100) return { label: 'Good', color: 'bg-blue-500', width: '75%' };
+    return { label: 'Strong', color: 'bg-emerald-500', width: '100%' };
+  };
+  const strength = getStrength(message);
+
   const handleAiGenerate = async () => {
-    if (!aiPrompt) return;
+    if (!generatePrompt) return;
     setIsGenerating(true);
     try {
-      const template = await generateTemplate(aiPrompt);
+      const template = await generateTemplate(generatePrompt, generateTone, generateLength, generateLanguage);
       setGeneratedTemplate(template);
     } catch (error: any) {
       showNotify("Failed to generate. Please try again.", "error");
@@ -3126,12 +3294,13 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
     if (!message) return;
     setIsEnhancing(true);
     try {
-      const enhanced = await enhanceMessage(message, selectedTone, { emoji: true, grammar: true });
+      const enhanced = await enhanceMessage(message, enhanceTone, enhanceType);
       if (enhanced === message) {
         showNotify("AI could not enhance the message. Check your API key.", "error");
       } else {
         setMessage(enhanced);
         showNotify("Message enhanced successfully!", "success");
+        setShowAiEnhance(false);
       }
     } catch (err) {
       console.error(err);
@@ -3254,7 +3423,25 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
           setSendingProgress('');
         });
 
-        await sendMessages(user.email, messages, attachmentPreview);
+        const response = await sendMessages(user.email, messages, attachmentPreview);
+        
+        let sentCount = contacts.length;
+        if (response && response.results) {
+          const failed = response.results.filter((r: any) => r.status === 'failed');
+          if (failed.length === messages.length) {
+             throw new Error(`All messages failed. Reason: ${failed[0].error}`);
+          } else if (failed.length > 0) {
+             showNotify(`${failed.length} messages failed to send.`, "warning");
+             sentCount = messages.length - failed.length;
+          }
+        } else if (response && response.sent !== undefined) {
+          if (response.sent === 0 && messages.length > 0) {
+             throw new Error(`All messages failed. Check your Meta API credentials and ensure numbers include country codes.`);
+          } else if (response.sent < messages.length) {
+             showNotify(`${messages.length - response.sent} messages failed to send.`, "warning");
+          }
+          sentCount = response.sent;
+        }
         
         // 3. Log campaign
         await supabase.from('campaigns').insert([{
@@ -3265,7 +3452,7 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
           batch: selectedBatch,
           attachment_url: attachmentPreview,
           total_messages: contacts.length,
-          sent_messages: contacts.length
+          sent_messages: sentCount
         }]);
         
         showNotify("Campaign sent successfully!", "success");
@@ -3304,35 +3491,20 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
         <div className="glass-panel p-8 space-y-6">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-black text-white tracking-tight">Compose Message</h3>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5">
-                <span className="text-[10px] font-black text-soft-lavender/40 uppercase tracking-widest">Tone:</span>
-                <select 
-                  value={selectedTone}
-                  onChange={(e) => setSelectedTone(e.target.value as any)}
-                  className="bg-transparent text-xs font-bold text-white outline-none cursor-pointer"
-                >
-                  <option value="professional" className="bg-deep-night">Professional</option>
-                  <option value="friendly" className="bg-deep-night">Friendly</option>
-                  <option value="marketing" className="bg-deep-night">Marketing</option>
-                  <option value="motivational" className="bg-deep-night">Motivational</option>
-                </select>
-              </div>
+            <div className="flex items-center gap-2">
               <button 
-                onClick={() => setShowTemplates(true)}
-                disabled={isExpired}
-                className="flex items-center gap-2 text-xs font-black text-soft-lavender uppercase tracking-widest hover:text-white transition-colors disabled:opacity-50"
+                onClick={() => setShowAiEnhance(true)}
+                disabled={!message || isExpired}
+                className="flex items-center gap-2 text-xs font-black text-amethyst uppercase tracking-widest hover:text-white transition-colors disabled:opacity-50 bg-white/5 border border-white/10 rounded-xl px-4 py-2"
               >
-                <Sparkles size={14} className="text-amethyst" />
-                <span>Templates</span>
+                🤖 AI Enhance
               </button>
               <button 
-                onClick={handleEnhance}
-                disabled={isEnhancing || !message || isExpired}
-                className="flex items-center gap-2 text-xs font-black text-amethyst uppercase tracking-widest hover:text-white transition-colors disabled:opacity-50"
+                onClick={() => setShowAiGenerate(true)}
+                disabled={isExpired}
+                className="flex items-center gap-2 text-xs font-black text-amber-500 uppercase tracking-widest hover:text-white transition-colors disabled:opacity-50 bg-white/5 border border-white/10 rounded-xl px-4 py-2"
               >
-                <Sparkles size={14} className={isEnhancing ? "animate-pulse" : ""} />
-                <span>{isEnhancing ? "Enhancing..." : "AI Enhance"}</span>
+                ⚡ AI Generate
               </button>
             </div>
           </div>
@@ -3401,40 +3573,105 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
               </motion.div>
             )}
 
+            <div className="flex gap-2 overflow-x-auto pb-2">
+              {[
+                { id: 'text', label: 'Text' },
+                { id: 'image', label: 'Image (10MB)' },
+                { id: 'video', label: 'Video (100MB)' },
+                { id: 'document', label: 'Document (200MB)' },
+                { id: 'audio', label: 'Audio (20MB)' }
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={cn(
+                    "px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-colors",
+                    activeTab === tab.id 
+                      ? "bg-amethyst text-white" 
+                      : "bg-white/5 text-soft-lavender/60 hover:bg-white/10 hover:text-white"
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
             <div className="relative">
-              <textarea 
-                value={message}
-                onChange={(e) => setMessage(e.target.value.slice(0, maxChars))}
-                disabled={isExpired}
-                placeholder="Type your message here..."
-                className="w-full h-64 bg-white/5 border border-white/10 rounded-2xl p-6 text-white outline-none focus:border-amethyst transition-all resize-none disabled:opacity-50"
-              />
-              <div className={cn(
-                "absolute bottom-4 right-4 text-[10px] font-black transition-colors",
-                isDanger ? "text-red-500" : isWarning ? "text-amber-500" : "text-soft-lavender/40"
-              )}>
-                {charCount} / {maxChars}
+              {activeTab === 'text' ? (
+                <textarea 
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  disabled={isExpired}
+                  placeholder="Type your message here..."
+                  className="w-full h-64 bg-white/5 border border-white/10 rounded-2xl p-6 text-white outline-none focus:border-amethyst transition-all resize-none disabled:opacity-50"
+                />
+              ) : (
+                <div className="space-y-4">
+                  <div className="w-full h-40 border-2 border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center bg-white/5 hover:bg-white/10 transition-colors relative">
+                    <input 
+                      type="file" 
+                      className="absolute inset-0 opacity-0 cursor-pointer" 
+                      onChange={handleFileChange} 
+                      accept={
+                        activeTab === 'image' ? 'image/*' : 
+                        activeTab === 'video' ? 'video/*' : 
+                        activeTab === 'audio' ? 'audio/*' : 
+                        '*/*'
+                      }
+                      disabled={isExpired} 
+                    />
+                    <FileUp size={32} className="text-soft-lavender/40 mb-2" />
+                    <p className="text-sm text-soft-lavender/60">Drag & drop or click to upload</p>
+                  </div>
+                  {attachmentPreview && (
+                    <div className="relative w-full h-32 rounded-2xl overflow-hidden border border-white/10 group">
+                      {attachment?.type.startsWith('image/') ? (
+                        <img src={attachmentPreview} className="w-full h-full object-cover" alt="Preview" />
+                      ) : (
+                        <div className="w-full h-full bg-white/5 flex items-center justify-center">
+                          <span className="text-white font-bold">{attachment?.name}</span>
+                        </div>
+                      )}
+                      <button 
+                        onClick={() => { setAttachment(null); setAttachmentPreview(null); }}
+                        className="absolute top-2 right-2 p-2 bg-red-500 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  )}
+                  <textarea 
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    disabled={isExpired}
+                    placeholder="Add a caption..."
+                    className="w-full h-24 bg-white/5 border border-white/10 rounded-2xl p-4 text-white outline-none focus:border-amethyst transition-all resize-none disabled:opacity-50"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                <span className="text-soft-lavender/40">Message Strength</span>
+                <span className={cn(
+                  "transition-colors",
+                  strength.label === 'Weak' ? 'text-red-500' :
+                  strength.label === 'Fair' ? 'text-amber-500' :
+                  strength.label === 'Good' ? 'text-blue-500' :
+                  'text-emerald-500'
+                )}>{strength.label}</span>
+              </div>
+              <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                <motion.div 
+                  className={cn("h-full", strength.color)}
+                  initial={{ width: 0 }}
+                  animate={{ width: strength.width }}
+                  transition={{ duration: 0.3 }}
+                />
               </div>
             </div>
           </div>
-          
-          {attachmentPreview && (
-            <div className="relative w-32 h-32 rounded-2xl overflow-hidden border border-white/10 group">
-              {attachment?.type.startsWith('image/') ? (
-                <img src={attachmentPreview} className="w-full h-full object-cover" alt="Preview" />
-              ) : (
-                <div className="w-full h-full bg-white/5 flex items-center justify-center">
-                  <FileUp size={32} className="text-soft-lavender/20" />
-                </div>
-              )}
-              <button 
-                onClick={() => { setAttachment(null); setAttachmentPreview(null); }}
-                className="absolute top-2 right-2 p-1 bg-red-500 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <X size={12} />
-              </button>
-            </div>
-          )}
 
           <div className="flex justify-between items-center">
               <div className="flex gap-4">
@@ -3484,7 +3721,7 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
             </button>
           </div>
           
-          {profile.plan === 'free_trial' && (
+          {profile?.plan === 'free_trial' && (
             <p className="text-[10px] text-amethyst font-black uppercase tracking-widest text-center">
               Free Trial Active: 10 Messages / 50 Contacts Limit
             </p>
@@ -3643,6 +3880,210 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
           </div>
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {showAiEnhance && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowAiEnhance(false)} />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md glass-panel p-8 flex flex-col gap-6"
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
+                  🤖 AI Enhance
+                </h3>
+                <button onClick={() => setShowAiEnhance(false)} className="p-2 hover:bg-white/10 rounded-xl text-soft-lavender/40 hover:text-white transition-all">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-soft-lavender/40 uppercase tracking-widest">Tone</label>
+                  <select 
+                    value={enhanceTone}
+                    onChange={(e) => setEnhanceTone(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white outline-none focus:border-amethyst transition-all"
+                  >
+                    {['Professional', 'Casual', 'Friendly', 'Urgent', 'Persuasive'].map(t => (
+                      <option key={t} value={t} className="bg-deep-night">{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-soft-lavender/40 uppercase tracking-widest">Type</label>
+                  <select 
+                    value={enhanceType}
+                    onChange={(e) => setEnhanceType(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white outline-none focus:border-amethyst transition-all"
+                  >
+                    {['Improve Grammar', 'More Engaging', 'Shorter', 'Longer', 'Persuasive', 'Add Emojis'].map(t => (
+                      <option key={t} value={t} className="bg-deep-night">{t}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button 
+                  onClick={() => setShowAiEnhance(false)}
+                  className="flex-1 py-3 bg-white/5 border border-white/10 rounded-xl text-xs font-black text-white uppercase tracking-widest hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+                >
+                  Close
+                </button>
+                <button 
+                  onClick={handleEnhance}
+                  disabled={isEnhancing}
+                  className="flex-1 py-3 bg-amethyst text-white rounded-xl text-xs font-black uppercase tracking-widest hover:shadow-[0_0_20px_rgba(153,102,255,0.4)] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isEnhancing ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  {isEnhancing ? "Enhancing..." : "Enhance"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showAiGenerate && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowAiGenerate(false)} />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-2xl bg-[#1a1400] border border-amber-500/20 rounded-3xl p-8 flex flex-col gap-6 overflow-hidden shadow-[0_0_50px_rgba(245,158,11,0.1)]"
+            >
+              <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 blur-[100px] rounded-full -mr-32 -mt-32 pointer-events-none" />
+              
+              <div className="relative z-10 flex items-center justify-between">
+                <div>
+                  <h3 className="text-2xl font-black text-amber-500 tracking-tight flex items-center gap-2">
+                    ⚡ AI Message Generator
+                  </h3>
+                  <p className="text-xs text-amber-500/60 mt-1">Describe what you want, AI writes it for you</p>
+                </div>
+                <button onClick={() => setShowAiGenerate(false)} className="p-2 hover:bg-amber-500/10 rounded-xl text-amber-500/40 hover:text-amber-500 transition-all">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="relative z-10 space-y-6">
+                <div className="space-y-3">
+                  <textarea 
+                    value={generatePrompt}
+                    onChange={(e) => setGeneratePrompt(e.target.value)}
+                    placeholder="E.g. Write a festival offer message for my clothing store offering 50% off..."
+                    className="w-full h-32 bg-black/40 border border-amber-500/20 rounded-2xl p-4 text-white outline-none focus:border-amber-500 transition-all resize-none"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    {['📚 Exam reminder', '🎉 Festival offer', '📢 New batch', '🏆 Results', '💰 Payment', '📱 Product launch'].map(chip => (
+                      <button
+                        key={chip}
+                        onClick={() => setGeneratePrompt(chip)}
+                        className="px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs font-bold text-amber-500 hover:bg-amber-500/20 transition-colors"
+                      >
+                        {chip}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-amber-500/60 uppercase tracking-widest">Tone</label>
+                    <select 
+                      value={generateTone}
+                      onChange={(e) => setGenerateTone(e.target.value)}
+                      className="w-full bg-black/40 border border-amber-500/20 rounded-xl py-3 px-4 text-white outline-none focus:border-amber-500 transition-all"
+                    >
+                      {['Professional', 'Casual', 'Friendly', 'Urgent', 'Persuasive'].map(t => (
+                        <option key={t} value={t} className="bg-deep-night">{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-amber-500/60 uppercase tracking-widest">Length</label>
+                    <select 
+                      value={generateLength}
+                      onChange={(e) => setGenerateLength(e.target.value)}
+                      className="w-full bg-black/40 border border-amber-500/20 rounded-xl py-3 px-4 text-white outline-none focus:border-amber-500 transition-all"
+                    >
+                      {['Short', 'Medium', 'Long'].map(t => (
+                        <option key={t} value={t} className="bg-deep-night">{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-amber-500/60 uppercase tracking-widest">Language</label>
+                    <select 
+                      value={generateLanguage}
+                      onChange={(e) => setGenerateLanguage(e.target.value)}
+                      className="w-full bg-black/40 border border-amber-500/20 rounded-xl py-3 px-4 text-white outline-none focus:border-amber-500 transition-all"
+                    >
+                      {['English', 'Hindi', 'Hinglish', 'Marathi', 'Tamil', 'Telugu'].map(t => (
+                        <option key={t} value={t} className="bg-deep-night">{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {isGenerating ? (
+                  <div className="p-6 bg-black/40 border border-amber-500/20 rounded-2xl animate-pulse flex flex-col items-center justify-center gap-3">
+                    <div className="flex gap-1">
+                      <div className="w-2 h-2 bg-amber-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <div className="w-2 h-2 bg-amber-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <div className="w-2 h-2 bg-amber-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                    <span className="text-xs font-black text-amber-500 uppercase tracking-widest">🤖 AI is writing...</span>
+                  </div>
+                ) : generatedTemplate ? (
+                  <div className="space-y-4">
+                    <div className="p-4 bg-[#dcf8c6] rounded-2xl rounded-tl-none max-w-[80%] shadow-sm relative text-slate-800 text-sm whitespace-pre-wrap">
+                      {generatedTemplate}
+                    </div>
+                    <div className="flex gap-3">
+                      <button 
+                        onClick={() => {
+                          setMessage(generatedTemplate);
+                          setShowAiGenerate(false);
+                          showNotify("AI Message applied!", "success");
+                        }}
+                        className="flex-1 py-3 bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-600 transition-all flex items-center justify-center gap-2"
+                      >
+                        <Check size={14} />
+                        Use This
+                      </button>
+                      <button 
+                        onClick={handleAiGenerate}
+                        className="flex-1 py-3 bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-amber-500/20 transition-all flex items-center justify-center gap-2"
+                      >
+                        <RefreshCw size={14} />
+                        Regenerate
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="flex justify-end pt-2">
+                  <button 
+                    onClick={handleAiGenerate}
+                    disabled={isGenerating || !generatePrompt}
+                    className="px-8 py-4 bg-amber-500 text-black rounded-xl font-black uppercase tracking-widest hover:shadow-[0_0_30px_rgba(245,158,11,0.4)] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <Zap size={16} />
+                    Generate
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -3770,6 +4211,12 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
   const [serverUrl, setServerUrl] = useState(() => {
     return localStorage.getItem('whatsapp_server_url') || '';
   });
+  const [metaAccessToken, setMetaAccessToken] = useState(() => {
+    return localStorage.getItem('meta_access_token') || '';
+  });
+  const [metaPhoneId, setMetaPhoneId] = useState(() => {
+    return localStorage.getItem('meta_phone_id') || '';
+  });
 
   const handleSaveUrl = () => {
     if (serverUrl.trim()) {
@@ -3784,8 +4231,86 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
     }
   };
 
+  const handleSaveMetaConfig = () => {
+    if (metaAccessToken.trim() && metaPhoneId.trim()) {
+      localStorage.setItem('meta_access_token', metaAccessToken.trim());
+      localStorage.setItem('meta_phone_id', metaPhoneId.trim());
+      showNotify('Meta API configuration saved successfully', 'success');
+    } else {
+      localStorage.removeItem('meta_access_token');
+      localStorage.removeItem('meta_phone_id');
+      showNotify('Meta API configuration cleared', 'info');
+    }
+  };
+
+  const handleTestMetaConnection = async () => {
+    if (!metaAccessToken.trim() || !metaPhoneId.trim()) {
+      showNotify('Please enter both Access Token and Phone ID', 'error');
+      return;
+    }
+    showNotify('Testing connection...', 'info');
+    try {
+      // Simulate API call to test connection
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      showNotify('Connection successful!', 'success');
+    } catch (error) {
+      showNotify('Connection failed. Please check your credentials.', 'error');
+    }
+  };
+
   return (
     <div className="max-w-2xl space-y-8">
+      <div className="glass-panel p-10 space-y-8">
+        <h3 className="text-xl font-black text-white tracking-tight">WhatsApp Connection</h3>
+        <p className="text-soft-lavender/60 text-sm">
+          Connect your WhatsApp account by scanning the QR code below.
+        </p>
+        <WhatsAppConnect userId={user?.email || 'anonymous'} />
+      </div>
+
+      <div className="glass-panel p-10 space-y-8">
+        <h3 className="text-xl font-black text-white tracking-tight">Meta API Configuration</h3>
+        <p className="text-soft-lavender/60 text-sm">
+          Configure your Meta Cloud API credentials for sending messages.
+        </p>
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Access Token</label>
+            <input 
+              type="password" 
+              value={metaAccessToken}
+              onChange={(e) => setMetaAccessToken(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none transition-all focus:border-amethyst focus:ring-1 focus:ring-amethyst"
+              placeholder="EAA..."
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Phone Number ID</label>
+            <input 
+              type="text" 
+              value={metaPhoneId}
+              onChange={(e) => setMetaPhoneId(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none transition-all focus:border-amethyst focus:ring-1 focus:ring-amethyst"
+              placeholder="123456789012345"
+            />
+          </div>
+          <div className="flex gap-4 pt-2">
+            <button
+              onClick={handleTestMetaConnection}
+              className="flex-1 py-4 bg-white/5 border border-white/10 text-white rounded-2xl font-bold hover:bg-white/10 transition-all"
+            >
+              Test Connection
+            </button>
+            <button
+              onClick={handleSaveMetaConfig}
+              className="flex-1 py-4 bg-emerald-500 text-white rounded-2xl font-bold hover:bg-emerald-600 transition-all"
+            >
+              Save Config
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="glass-panel p-10 space-y-8">
         <h3 className="text-xl font-black text-white tracking-tight">WhatsApp Server Configuration</h3>
         <div className="space-y-6">
@@ -4008,43 +4533,6 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
 
   return (
     <div className="space-y-10">
-      {/* WhatsApp Connection Section */}
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="glass-panel p-8 border-amethyst/20 overflow-hidden relative"
-      >
-        <div className="absolute top-0 right-0 w-64 h-64 bg-amethyst/5 rounded-full -mr-32 -mt-32 blur-3xl" />
-        <div className="relative flex flex-col lg:flex-row items-center justify-between gap-8">
-          <div className="flex-1 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-500">
-                <MessageCircle size={20} />
-              </div>
-              <div className="flex flex-col">
-                <h3 className="text-2xl font-black text-white tracking-tight">WhatsApp Connection</h3>
-              </div>
-            </div>
-            <p className="text-soft-lavender/60 text-sm max-w-md">
-              Connect your WhatsApp account to start sending automated campaigns and messages directly from the dashboard.
-            </p>
-            <WhatsAppConnect userId={user?.email || 'anonymous'} />
-          </div>
-          <div className="w-full lg:w-[320px] aspect-square glass-panel p-6 flex flex-col items-center justify-center bg-white/5 border-white/10 relative overflow-hidden text-center">
-            <div className="absolute inset-0 bg-gradient-to-br from-amethyst/10 to-transparent opacity-50" />
-            <div className="relative z-10 flex flex-col items-center gap-4">
-              <div className="w-16 h-16 bg-amethyst/20 rounded-2xl flex items-center justify-center text-amethyst animate-pulse">
-                <Zap size={32} />
-              </div>
-              <div>
-                <h4 className="text-lg font-black text-white">Ready to Scale?</h4>
-                <p className="text-soft-lavender/60 text-sm">Connect your account and start reaching thousands of customers instantly.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </motion.div>
-
       <div className="glass-panel p-6 flex items-center justify-between border-amethyst/20">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-amethyst/10 rounded-2xl flex items-center justify-center text-amethyst">

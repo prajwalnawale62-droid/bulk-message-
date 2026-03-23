@@ -254,16 +254,27 @@ async function startServer() {
       }
 
       const results = [];
+      let sent = 0;
       for (const msg of messages) {
         try {
-          // Add mediaUrl handling here if needed
-          await sendWhatsAppMessage(userId, msg.number, msg.message);
+          await sendWhatsAppMessage(userId, msg.number, msg.message, mediaUrl);
           results.push({ number: msg.number, status: 'sent' });
+          sent++;
+          io.to(userId).emit('message_sent', { sent });
+          
+          // Add a small delay to avoid spam detection
+          if (sent % 10 === 0) {
+            io.to(userId).emit('burst_gap');
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          } else {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
         } catch (error: any) {
           results.push({ number: msg.number, status: 'failed', error: error.message });
         }
       }
 
+      io.to(userId).emit('queue_complete');
       res.json({ success: true, results });
     } catch (error: any) {
       console.error("Error sending messages:", error);
@@ -651,9 +662,12 @@ async function startServer() {
           })).filter((c: any) => c.number);
 
           // Send messages via local WhatsApp service
+          let sentCount = 0;
           for (const msg of messages) {
             try {
-              await sendWhatsAppMessage(userEmail, msg.number, msg.message);
+              await sendWhatsAppMessage(userEmail, msg.number, msg.message, campaign.attachment_url);
+              sentCount++;
+              await new Promise(resolve => setTimeout(resolve, 1000)); // Rate limiting
             } catch (err: any) {
               console.error(`Failed to send message to ${msg.number}:`, err.message);
             }
@@ -664,7 +678,7 @@ async function startServer() {
             .from('campaigns')
             .update({ 
               status: 'completed',
-              sent_messages: messages.length
+              sent_messages: sentCount
             })
             .eq('id', campaign.id);
 

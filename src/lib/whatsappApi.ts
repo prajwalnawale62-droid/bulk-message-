@@ -52,6 +52,82 @@ export async function startSession(userId: string) {
 }
 
 export async function sendMessages(userId: string, messages: {number: string, message: string}[], attachmentUrl?: string | null) {
+  const metaAccessToken = localStorage.getItem('meta_access_token');
+  const metaPhoneId = localStorage.getItem('meta_phone_id');
+
+  if (metaAccessToken && metaPhoneId) {
+    // Send via Meta API
+    let sentCount = 0;
+    let mediaId: string | null = null;
+    let mediaType = "image";
+
+    if (attachmentUrl && attachmentUrl.startsWith('data:')) {
+      try {
+        const res = await fetch(attachmentUrl);
+        const blob = await res.blob();
+        const formData = new FormData();
+        formData.append('file', blob, 'attachment');
+        formData.append('messaging_product', 'whatsapp');
+        
+        const uploadRes = await axios.post(`https://graph.facebook.com/v17.0/${metaPhoneId}/media`, formData, {
+          headers: {
+            'Authorization': `Bearer ${metaAccessToken}`
+          }
+        });
+        mediaId = uploadRes.data.id;
+        
+        const mimeType = attachmentUrl.split(';')[0].split(':')[1];
+        if (mimeType.startsWith('video/')) mediaType = "video";
+        else if (mimeType.startsWith('image/')) mediaType = "image";
+        else mediaType = "document";
+      } catch (err) {
+        console.error('Failed to upload media to Meta:', err);
+      }
+    }
+
+    for (const msg of messages) {
+      try {
+        const payload: any = {
+          messaging_product: "whatsapp",
+          to: msg.number,
+        };
+        
+        if (mediaId) {
+          payload.type = mediaType;
+          payload[mediaType] = {
+            id: mediaId,
+            caption: msg.message
+          };
+          if (mediaType === 'document') {
+            payload[mediaType].filename = 'attachment';
+          }
+        } else if (attachmentUrl && !attachmentUrl.startsWith('data:')) {
+          payload.type = "image";
+          payload.image = {
+            link: attachmentUrl,
+            caption: msg.message
+          };
+        } else {
+          payload.type = "text";
+          payload.text = { body: msg.message };
+        }
+        
+        await axios.post(`https://graph.facebook.com/v17.0/${metaPhoneId}/messages`, payload, {
+          headers: {
+            'Authorization': `Bearer ${metaAccessToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        sentCount++;
+        // Add a small delay to avoid rate limits
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (err: any) {
+        console.error('Meta API error:', err.response?.data || err.message);
+      }
+    }
+    return { success: true, sent: sentCount };
+  }
+
   const BASE_URL = getBaseUrl();
   const payload: any = { 
     userId, 
