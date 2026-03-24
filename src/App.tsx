@@ -55,7 +55,10 @@ import {
   Bell,
   Smile,
   MessageCircle,
-  QrCode
+  QrCode,
+  Eye,
+  EyeOff,
+  Info
 } from 'lucide-react';
 import EmojiPicker, { Theme as EmojiTheme } from 'emoji-picker-react';
 import { motion, AnimatePresence, useScroll, useSpring, useTransform } from 'framer-motion';
@@ -148,14 +151,26 @@ Mobile: +91 9551522030`
 };
 
 const MESSAGE_TEMPLATES = [
-  { id: 1, title: 'Welcome', content: "Hello! Welcome to our service. We're excited to have you on board. Feel free to reach out anytime!" },
-  { id: 2, title: 'Offer', content: "🎉 Special Offer! Get 20% off on all our services today only. Limited time deal — don't miss out!" },
-  { id: 3, title: 'Reminder', content: "Hi! This is a friendly reminder about your upcoming appointment. Please confirm your availability." },
-  { id: 4, title: 'Follow Up', content: "Hello! Just following up on our previous conversation. Please let us know if you need any assistance." },
-  { id: 5, title: 'Thank You', content: "Thank you for choosing us! Your trust means everything to us. We look forward to serving you again." },
-  { id: 6, title: 'Order Confirmation', content: "Your order has been confirmed! 🎊 We will process it shortly and keep you updated on the status." },
-  { id: 7, title: 'Payment Reminder', content: "Gentle reminder: Your payment is due soon. Please complete the payment to avoid any interruption." },
-  { id: 8, title: 'Promotional', content: "🚀 Exciting news! We have launched new features just for you. Check it out and let us know your feedback!" },
+  // Education
+  { id: 'edu-1', category: 'Education', title: 'Course Update', content: 'Hello! This is an update regarding your course. Please check the portal for new materials.' },
+  { id: 'edu-2', category: 'Education', title: 'Exam Schedule', content: 'Dear Student, the exam schedule for this semester has been released. Good luck!' },
+  { id: 'edu-3', category: 'Education', title: 'Admission Open', content: 'Admissions are now open for the new session. Apply now to secure your seat!' },
+  
+  // Business
+  { id: 'biz-1', category: 'Business', title: 'Meeting Reminder', content: 'Hi, this is a reminder for our scheduled meeting today at [Time]. See you there!' },
+  { id: 'biz-2', category: 'Business', title: 'Invoice Due', content: 'Hello, your invoice [Number] is due for payment. Please settle it at your earliest convenience.' },
+  
+  // E-Commerce
+  { id: 'eco-1', category: 'E-Commerce', title: 'Order Confirmed', content: 'Great news! Your order #[OrderID] has been confirmed and is being processed.' },
+  { id: 'eco-2', category: 'E-Commerce', title: 'Flash Sale', content: 'Our Flash Sale is LIVE! Get up to 50% off on all items for the next 24 hours.' },
+  
+  // Healthcare
+  { id: 'hea-1', category: 'Healthcare', title: 'Appointment Reminder', content: 'This is a reminder for your appointment with Dr. [Name] on [Date] at [Time].' },
+  { id: 'hea-2', category: 'Healthcare', title: 'Health Tip', content: 'Stay hydrated! Drinking enough water is essential for your overall health and well-being.' },
+  
+  // Marketing
+  { id: 'mar-1', category: 'Marketing', title: 'New Product Launch', content: 'We are excited to announce the launch of our new product! Check it out here: [Link]' },
+  { id: 'mar-2', category: 'Marketing', title: 'Special Discount', content: 'As a valued customer, here is a special 20% discount code just for you: WELCOME20' }
 ];
 
 // --- Components ---
@@ -539,6 +554,8 @@ const FeatureCard = ({ icon: Icon, title, description, index }: { icon: any, tit
 const LegalModal = ({ type, onClose }: { type: 'privacy' | 'terms' | 'copyright' | 'trade' | 'disclaimer' | 'about', onClose: () => void }) => {
   const content = LEGAL_CONTENT[type];
   
+  if (!content) return null;
+  
   const renderContent = () => {
     if (type === 'about') {
       return (
@@ -646,15 +663,20 @@ const PricingCard = ({ plan, isPremium = false, onSelect, buttonText = "Select P
     <motion.div 
       initial={{ opacity: 0, scale: 0.9 }}
       whileInView={{ opacity: 1, scale: 1 }}
-      whileHover={{ scale: 1.05 }}
+      whileHover={{ 
+        scale: 1.05,
+        boxShadow: "0 0 30px rgba(153, 102, 204, 0.4)",
+        borderColor: "rgba(153, 102, 204, 0.6)"
+      }}
       className={cn(
-        "glass-panel p-10 flex flex-col relative overflow-hidden",
+        "glass-panel p-10 flex flex-col relative overflow-hidden transition-all duration-300",
         isPremium ? "border-amethyst/50 shadow-[0_0_50px_rgba(153,102,204,0.2)]" : ""
       )}
     >
       {isPremium && (
-        <div className="absolute top-6 right-6 bg-amethyst text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
-          Most Popular
+        <div className="absolute top-6 right-6 bg-amethyst text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest flex items-center gap-1">
+          <Sparkles size={10} />
+          {plan.name === 'Yearly Plan' ? '⭐ Recommended' : 'Most Popular'}
         </div>
       )}
       <h3 className="text-xl font-bold text-soft-lavender/60 mb-2 uppercase tracking-widest">{plan.name}</h3>
@@ -746,7 +768,7 @@ export default function App() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
   const [toasts, setToasts] = useState<{ id: number, message: string, type: 'success' | 'error' | 'info' | 'warning' }[]>([]);
-  const [legalModal, setLegalModal] = useState<'privacy' | 'terms' | 'copyright' | null>(null);
+  const [legalModal, setLegalModal] = useState<'privacy' | 'terms' | 'copyright' | 'trade' | 'disclaimer' | 'about' | null>(null);
 
   const [isWhatsappConnected, setIsWhatsappConnected] = useState(false);
 
@@ -1028,6 +1050,7 @@ export default function App() {
             email: user.email, 
             plan: 'free_trial', 
             credits: 100,
+            use_case: user.user_metadata?.use_case || '',
             trial_expiry: trialExpiry.toISOString(),
             created_at: new Date().toISOString()
           }])
@@ -1216,7 +1239,7 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
       {view === 'landing' ? (
         <LandingPage setView={setView} user={user} setLegalModal={setLegalModal} />
       ) : view === 'login' ? (
-        <LoginPage setView={setView} />
+        <LoginPage setView={setView} onOpenModal={setLegalModal} />
       ) : (
         <div className="flex min-h-screen">
           {/* Sidebar */}
@@ -1297,7 +1320,7 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
                   {view === 'history' && <HistoryView user={user} showNotify={showNotify} />}
                   {view === 'guide' && <GuideView setView={setView} />}
                   {view === 'plans' && <PricingPage setView={setView} isDashboard onSelect={handlePayment} currentPlan={profile?.plan} />}
-                  {view === 'settings' && <SettingsView user={user} profile={profile} onUpdate={fetchProfile} onOpenModal={(type) => setLegalModal(type)} showNotify={showNotify} />}
+                  {view === 'settings' && <SettingsView user={user} profile={profile} onUpdate={fetchProfile} onOpenModal={(type) => setLegalModal(type)} setView={setView} showNotify={showNotify} />}
                   {view === 'admin' && <AdminView user={user} />}
                 </motion.div>
               </AnimatePresence>
@@ -1607,7 +1630,7 @@ const FeedbackModal = ({ onClose }: { onClose: () => void }) => {
   );
 };
 
-const LandingPage = ({ setView, user, setLegalModal }: { setView: (v: View) => void, user: any, setLegalModal: (m: 'privacy' | 'terms' | 'copyright' | null) => void }) => {
+const LandingPage = ({ setView, user, setLegalModal }: { setView: (v: View) => void, user: any, setLegalModal: (m: 'privacy' | 'terms' | 'copyright' | 'trade' | 'disclaimer' | 'about' | null) => void }) => {
   const [showFeedback, setShowFeedback] = useState(false);
   const { scrollYProgress } = useScroll();
   const scaleX = useSpring(scrollYProgress, {
@@ -1618,27 +1641,26 @@ const LandingPage = ({ setView, user, setLegalModal }: { setView: (v: View) => v
 
   const plans = [
     { 
-      name: 'Demo Plan', 
-      price: 'Free', 
+      name: 'Free Plan', 
+      price: '0', 
       amount: 0, 
       features: ['1 Day Access', 'Demo Messaging', 'Basic AI Assistant', 'Limited Contacts'], 
-      isDemo: true,
       description: 'Perfect for exploring our platform features.'
     },
     { 
-      name: 'Professional', 
+      name: 'Monthly Plan', 
       price: '2,999', 
       amount: 2999, 
       features: ['Unlimited Messages', 'AI Enhancement', 'Priority Support', 'File Attachments', 'Advanced Analytics'],
-      isPopular: true,
       description: 'The complete solution for growing businesses.'
     },
     { 
-      name: 'Enterprise', 
-      price: '17,999', 
-      amount: 17999, 
-      features: ['Everything in Professional', '2 Months Free', 'Dedicated Account Manager', 'Custom API Integration', 'White Label Reports'],
-      description: 'Scale without limits with enterprise-grade power.'
+      name: 'Yearly Plan', 
+      price: '23,999', 
+      amount: 23999, 
+      features: ['Everything in Monthly', '2 Months Free', 'Dedicated Manager', 'Custom Templates'],
+      isPopular: true,
+      description: 'Best value for long-term business growth.'
     }
   ];
 
@@ -1844,53 +1866,56 @@ const LandingPage = ({ setView, user, setLegalModal }: { setView: (v: View) => v
         </div>
       </section>
 
-      {/* Feedback Section */}
-      <section className="py-32 px-6 border-t border-white/5">
-        <div className="max-w-4xl mx-auto text-center">
+      {/* Testimonials Section */}
+      <section id="testimonials" className="py-32 px-6 border-t border-white/5">
+        <div className="max-w-7xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
+            className="text-center mb-20"
           >
-            <h2 className="text-4xl md:text-5xl font-black mb-6 tracking-tight">We'd Love to Hear From You! 💬</h2>
-            <p className="text-xl text-soft-lavender/60 mb-12">Share your suggestions, issues, or comments with us</p>
-            <button 
-              onClick={() => setShowFeedback(true)}
-              className="px-10 py-4 bg-white/5 border border-white/10 rounded-2xl font-bold hover:bg-white/10 transition-all"
-            >
-              Send Feedback
-            </button>
+            <h2 className="text-4xl md:text-6xl font-black mb-6 tracking-tight">What Our Users Say</h2>
+            <div className="w-24 h-1.5 bg-royal-purple mx-auto rounded-full" />
           </motion.div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {[
+              {
+                text: "Techtaire is a smart solution for modern businesses. It saves time and makes bulk messaging smooth and reliable.",
+                author: "Priyanka"
+              },
+              {
+                text: "Before Techtaire, contacting all our customers individually was time-consuming. Now we can send updates and offers instantly.",
+                author: "Abhishek"
+              },
+              {
+                text: "Techtaire made our customer communication incredibly simple. Sending bulk WhatsApp messages now takes just a few clicks!",
+                author: "Shubham"
+              }
+            ].map((review, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
+                className="glass-panel p-8 flex flex-col gap-6 hover:border-amethyst/50 transition-all group"
+              >
+                <div className="flex gap-1">
+                  {[...Array(5)].map((_, i) => (
+                    <Sparkles key={i} size={16} className="text-amethyst" />
+                  ))}
+                </div>
+                <p className="text-lg text-soft-lavender/80 italic">"{review.text}"</p>
+                <div className="mt-auto pt-6 border-t border-white/5">
+                  <p className="font-black text-white">— {review.author}</p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
         </div>
       </section>
-
-      {/* Floating Feedback Button */}
-      <motion.button 
-        onClick={() => setShowFeedback(true)}
-        initial={{ scale: 0, y: 20 }}
-        animate={{ scale: 1, y: 0 }}
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.9 }}
-        className="fixed bottom-10 right-10 z-[100] w-16 h-16 bg-royal-purple text-white rounded-full flex items-center justify-center shadow-2xl shadow-royal-purple/40 group overflow-hidden"
-      >
-        <motion.div
-          animate={{ 
-            y: [0, -8, 0],
-          }}
-          transition={{ 
-            duration: 2, 
-            repeat: Infinity,
-            ease: "easeInOut"
-          }}
-        >
-          <MessageCircle size={28} />
-        </motion.div>
-        
-        {/* Tooltip */}
-        <div className="absolute right-full mr-4 px-4 py-2 bg-white text-black text-xs font-bold rounded-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-xl">
-          Send us your feedback!
-        </div>
-      </motion.button>
 
       {/* Footer */}
       <footer className="py-20 px-6 border-t border-white/5 bg-black">
@@ -2079,7 +2104,7 @@ const DeveloperBoyIllustration = () => {
   );
 };
 
-const LoginPage = ({ setView }: { setView: (v: View) => void }) => {
+const LoginPage = ({ setView, onOpenModal }: { setView: (v: View) => void, onOpenModal: (type: any) => void }) => {
   useEffect(() => {
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -2096,6 +2121,38 @@ const LoginPage = ({ setView }: { setView: (v: View) => void }) => {
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [useCase, setUseCase] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState({ label: '', color: '', width: '0%' });
+
+  const checkPasswordStrength = (pass: string) => {
+    if (!pass) return setPasswordStrength({ label: '', color: '', width: '0%' });
+    let strength = 0;
+    if (pass.length >= 8) strength++;
+    if (/[A-Z]/.test(pass)) strength++;
+    if (/[0-9]/.test(pass)) strength++;
+    if (/[^A-Za-z0-9]/.test(pass)) strength++;
+
+    if (strength <= 1) setPasswordStrength({ label: 'Weak', color: 'bg-red-500', width: '25%' });
+    else if (strength === 2) setPasswordStrength({ label: 'Fair', color: 'bg-amber-500', width: '50%' });
+    else if (strength === 3) setPasswordStrength({ label: 'Good', color: 'bg-blue-500', width: '75%' });
+    else setPasswordStrength({ label: 'Strong', color: 'bg-emerald-500', width: '100%' });
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
 
   const [logoClicks, setLogoClicks] = useState(0);
 
@@ -2226,7 +2283,25 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
       }
 
       if (isSignUp) {
-        const { data, error } = await supabase.auth.signUp({ email, password });
+        if (!useCase) {
+          alert("Please select what you will use Techtaire for");
+          setLoading(false);
+          return;
+        }
+        if (!acceptedTerms) {
+          alert("Please accept the Terms & Conditions");
+          setLoading(false);
+          return;
+        }
+        const { data, error } = await supabase.auth.signUp({ 
+          email, 
+          password,
+          options: {
+            data: {
+              use_case: useCase
+            }
+          }
+        });
         if (error) throw error;
         
         // Send welcome email using EmailJS
@@ -2320,7 +2395,6 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
               onClick={handleLogoClick}
               className="w-full relative cursor-pointer"
             >
-              <DeveloperBoyIllustration />
             </div>
           </div>
           <div className="text-center">
@@ -2397,31 +2471,92 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-soft-lavender/20" size={18} />
                   <input 
-                    type="password" 
+                    type={showPassword ? "text" : "password"} 
                     required
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (isSignUp) checkPasswordStrength(e.target.value);
+                    }}
                     onFocus={() => setIsFocused(true)}
                     onBlur={() => setIsFocused(false)}
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white outline-none focus:border-amethyst transition-all"
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-12 text-white outline-none focus:border-amethyst transition-all"
                     placeholder="••••••••"
                   />
-                  {password && (
-                    <motion.div 
-                      className="absolute right-4 top-1/2 -translate-y-1/2"
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                    >
-                      <Sparkles className="text-amethyst" size={18} />
-                    </motion.div>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-soft-lavender/40 hover:text-white transition-colors"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
                 </div>
+                {isSignUp && password && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest">
+                      <span className="text-soft-lavender/40">Password Strength</span>
+                      <span className={passwordStrength.color.replace('bg-', 'text-')}>{passwordStrength.label}</span>
+                    </div>
+                    <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: passwordStrength.width }}
+                        className={cn("h-full transition-all duration-500", passwordStrength.color)}
+                      />
+                    </div>
+                    {passwordStrength.label === 'Strong' && (
+                      <p className="text-[10px] text-emerald-400 font-medium">Perfect! That's a strong password.</p>
+                    )}
+                  </div>
+                )}
               </div>
+
+              {isSignUp && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">What will you use Techtaire for?</label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {['Education', 'Business', 'E-Commerce', 'Healthcare', 'Marketing'].map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => setUseCase(option)}
+                          className={cn(
+                            "py-2 px-3 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition-all",
+                            useCase === option 
+                              ? "bg-amethyst/20 border-amethyst text-white shadow-[0_0_15px_rgba(153,102,204,0.3)]" 
+                              : "bg-white/5 border-white/10 text-soft-lavender/40 hover:border-white/20"
+                          )}
+                        >
+                          {option}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <div className="relative">
+                      <input 
+                        type="checkbox" 
+                        className="peer sr-only"
+                        checked={acceptedTerms}
+                        onChange={(e) => setAcceptedTerms(e.target.checked)}
+                      />
+                      <div className="w-5 h-5 border-2 border-white/10 rounded-md bg-white/5 peer-checked:bg-amethyst peer-checked:border-amethyst transition-all flex items-center justify-center">
+                        <Check size={12} className="text-white scale-0 peer-checked:scale-100 transition-transform" />
+                      </div>
+                    </div>
+                    <span className="text-xs text-soft-lavender/60 group-hover:text-soft-lavender transition-colors">
+                      I agree to the <button type="button" onClick={() => onOpenModal('terms')} className="text-amethyst hover:underline">Terms & Conditions</button>
+                    </span>
+                  </label>
+                </div>
+              )}
 
               <button 
                 type="submit"
-                disabled={loading}
-                className="btn-premium w-full flex items-center justify-center gap-3"
+                disabled={loading || (isSignUp && !acceptedTerms)}
+                className="btn-premium w-full flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <RefreshCw className="animate-spin" size={20} />
@@ -2433,6 +2568,29 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
                 )}
               </button>
             </form>
+
+            <div className="mt-8 flex flex-col gap-4">
+              <div className="relative flex items-center justify-center">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-white/5"></div>
+                </div>
+                <span className="relative px-4 bg-deep-night text-[10px] font-black text-soft-lavender/20 uppercase tracking-[0.2em]">Or Continue With</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleGoogleSignIn}
+                className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center gap-3 font-bold hover:bg-white/10 transition-all group"
+              >
+                <svg className="w-5 h-5 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                <span>Google</span>
+              </button>
+            </div>
 
             <div className="mt-10 pt-10 border-t border-white/5 flex flex-col gap-4 text-center">
               <p className="text-sm text-soft-lavender/40">
@@ -2469,27 +2627,26 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
 const PricingPage = ({ setView, isDashboard = false, onSelect, currentPlan }: { setView: (v: View) => void, isDashboard?: boolean, onSelect: (plan: any) => void, currentPlan?: string }) => {
   const plans = [
     { 
-      name: 'Demo Plan', 
-      price: 'Free', 
+      name: 'Free Plan', 
+      price: '0', 
       amount: 0, 
       features: ['1 Day Access', 'Demo Messaging', 'Basic AI Assistant', 'Limited Contacts'], 
-      isDemo: true,
       description: 'Perfect for exploring our platform features.'
     },
     { 
-      name: 'Professional', 
+      name: 'Monthly Plan', 
       price: '2,999', 
       amount: 2999, 
       features: ['Unlimited Messages', 'AI Enhancement', 'Priority Support', 'File Attachments', 'Advanced Analytics'],
-      isPopular: true,
       description: 'The complete solution for growing businesses.'
     },
     { 
-      name: 'Enterprise', 
-      price: '17,999', 
-      amount: 17999, 
-      features: ['Everything in Professional', '2 Months Free', 'Dedicated Account Manager', 'Custom API Integration', 'White Label Reports'],
-      description: 'Scale without limits with enterprise-grade power.'
+      name: 'Yearly Plan', 
+      price: '23,999', 
+      amount: 23999, 
+      features: ['Everything in Monthly', '2 Months Free', 'Dedicated Manager', 'Custom Templates'],
+      isPopular: true,
+      description: 'Best value for long-term business growth.'
     }
   ];
 
@@ -2937,6 +3094,7 @@ function ContactsView({ user, showNotify }: { user: any, showNotify: (m: string,
   };
 
   const handleDeleteAll = async () => {
+    if (!user) return;
     if (!confirm("Are you sure you want to delete ALL contacts? This cannot be undone.")) return;
     const { error } = await supabase.from('contacts').delete().eq('user_id', user.id);
     if (error) showNotify(error.message, "error");
@@ -3204,7 +3362,22 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
   const [attachment, setAttachment] = useState<File | null>(null);
   const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
   const [selectedBatch, setSelectedBatch] = useState('all');
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [selectedContact, setSelectedContact] = useState<any>(null);
   const [contactCount, setContactCount] = useState(0);
+
+  const fetchContacts = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('user_id', user.id);
+    if (data) setContacts(data);
+  };
+
+  useEffect(() => {
+    if (user) fetchContacts();
+  }, [user]);
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
   const [isScheduled, setIsScheduled] = useState(false);
@@ -3273,15 +3446,13 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
   const isExpired = profile?.plan === 'free_trial' && profile?.trial_expiry && new Date(profile.trial_expiry) < new Date();
   
   const charCount = message.length;
-  const maxChars = 4096;
-  const isWarning = charCount >= 3500 && charCount < 4000;
-  const isDanger = charCount >= 4000;
   
   useEffect(() => {
     if (user) fetchBatches();
   }, [user]);
 
   const fetchBatches = async () => {
+    if (!user) return;
     const { data } = await supabase.from('contacts').select('batch').eq('user_id', user.id);
     if (data) {
       const uniqueBatches = Array.from(new Set(data.map(c => c.batch).filter(Boolean)));
@@ -3294,6 +3465,7 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
   }, [user, selectedBatch]);
 
   const fetchContactCount = async () => {
+    if (!user) return;
     let query = supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('user_id', user.id);
     if (selectedBatch !== 'all') {
       query = query.eq('batch', selectedBatch);
@@ -3467,7 +3639,7 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
           await supabase.from('campaigns').insert([{
             user_id: user.id,
             name: `Campaign ${new Date().toLocaleString()}`,
-            message_template: message,
+            message_content: message,
             status: 'completed',
             batch: selectedBatch,
             attachment_url: attachmentPreview,
@@ -3505,7 +3677,64 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+    <div className="space-y-10">
+      {/* About Techtaire Section */}
+      <div className="glass-panel p-10 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-amethyst/10 blur-[100px] rounded-full -mr-32 -mt-32" />
+        <div className="relative z-10">
+          <h3 className="text-2xl font-black text-white tracking-tight mb-6">About Techtaire</h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+            <div className="space-y-6">
+              <p className="text-soft-lavender/80 leading-relaxed">
+                Techtaire is a cutting-edge WhatsApp marketing platform designed to empower businesses with seamless, reliable, and efficient bulk messaging solutions. Our mission is to bridge the gap between businesses and their customers through the world's most popular messaging app.
+              </p>
+              <div className="grid grid-cols-3 gap-4">
+                {[
+                  { label: 'Free Plan', price: '₹0', active: profile?.plan === 'free_trial' },
+                  { label: 'Monthly', price: '₹2,999', active: profile?.plan === 'monthly' },
+                  { label: 'Yearly', price: '₹23,999', active: profile?.plan === 'yearly', recommended: true }
+                ].map(p => (
+                  <div key={p.label} className={cn(
+                    "p-4 rounded-2xl border transition-all relative",
+                    p.active ? "bg-amethyst/10 border-amethyst" : "bg-white/5 border-white/10",
+                    p.recommended && "border-amber-500/50"
+                  )}>
+                    {p.recommended && (
+                      <div className="absolute -top-2 -right-2 bg-amber-500 text-black text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">
+                        ⭐ Recommended
+                      </div>
+                    )}
+                    <div className="text-[10px] font-black text-soft-lavender/40 uppercase tracking-widest mb-1">{p.label}</div>
+                    <div className="text-lg font-black text-white">{p.price}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="glass-panel p-6 bg-white/5 border-white/10 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-amethyst/20 rounded-xl flex items-center justify-center text-amethyst">
+                  <Zap size={20} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-white">Smart Automation</h4>
+                  <p className="text-xs text-soft-lavender/40">AI-powered message generation and scheduling</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-400">
+                  <ShieldCheck size={20} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-white">Secure & Reliable</h4>
+                  <p className="text-xs text-soft-lavender/40">Enterprise-grade security for your communication</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
       <div className="space-y-8">
         {isExpired && (
           <div className="p-6 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-4">
@@ -3551,6 +3780,23 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
                   <option value="all" className="bg-deep-night">All Contacts ({contactCount})</option>
                   {batches.map(b => (
                     <option key={b} value={b} className="bg-deep-night">{b}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1 space-y-2">
+
+                <select 
+                  value={selectedContact?.id || ''}
+                  onChange={(e) => {
+                    const contact = contacts.find(c => c.id === e.target.value);
+                    setSelectedContact(contact || null);
+                  }}
+                  disabled={isExpired}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white outline-none focus:border-amethyst transition-all"
+                >
+                  <option value="" className="bg-deep-night">Select a contact...</option>
+                  {contacts.filter(c => selectedBatch === 'all' || c.batch_name === selectedBatch).map(c => (
+                    <option key={c.id} value={c.id} className="bg-deep-night">{c.name} ({c.whatsapp_number})</option>
                   ))}
                 </select>
               </div>
@@ -3682,7 +3928,7 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
 
             <div className="space-y-2">
               <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
-                <span className="text-soft-lavender/40">Message Strength</span>
+
                 <span className={cn(
                   "transition-colors",
                   strength.label === 'Weak' ? 'text-red-500' :
@@ -3784,8 +4030,9 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
           </div>
         </div>
       </div>
+    </div>
 
-      <AnimatePresence>
+    <AnimatePresence>
         {showTemplates && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
             <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => { setShowTemplates(false); setShowAiChat(false); }} />
@@ -3890,7 +4137,7 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
               )}
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto pr-2 custom-scrollbar">
-                {MESSAGE_TEMPLATES.map(template => (
+                {MESSAGE_TEMPLATES.filter(t => !profile?.use_case || t.category === profile.use_case).map(template => (
                   <button
                     key={template.id}
                     onClick={() => {
@@ -4120,6 +4367,7 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
 function HistoryView({ user, showNotify }: { user: any, showNotify: (m: string, t?: 'success' | 'error' | 'info' | 'warning') => void }) {
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchContact, setSearchContact] = useState('');
 
   const fetchCampaigns = async () => {
     if (!user) return;
@@ -4135,6 +4383,12 @@ function HistoryView({ user, showNotify }: { user: any, showNotify: (m: string, 
   useEffect(() => {
     fetchCampaigns();
   }, [user]);
+
+  const filteredCampaigns = campaigns.filter(c => 
+    !searchContact || 
+    c.name.toLowerCase().includes(searchContact.toLowerCase()) ||
+    (c.message_content && c.message_content.toLowerCase().includes(searchContact.toLowerCase()))
+  );
 
   const handleDeleteCampaign = async (id: string) => {
     if (!confirm("Are you sure you want to delete this campaign record?")) return;
@@ -4157,86 +4411,91 @@ function HistoryView({ user, showNotify }: { user: any, showNotify: (m: string, 
   };
 
   return (
-    <div className="glass-panel overflow-hidden">
-      <table className="w-full text-left">
-        <thead>
-          <tr className="border-b border-white/5 bg-white/5">
-            <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Campaign Name</th>
-            <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Status</th>
-            <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Progress</th>
-            <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Date</th>
-            <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-white/5">
-          {loading ? (
-            <tr><td colSpan={5} className="px-6 py-20 text-center"><RefreshCw className="animate-spin text-amethyst mx-auto" /></td></tr>
-          ) : campaigns.length === 0 ? (
-            <tr><td colSpan={5} className="px-6 py-20 text-center text-soft-lavender/40">No campaign history found.</td></tr>
-          ) : (
-            campaigns.map((c) => (
-              <tr key={c.id} className="hover:bg-white/5 transition-colors group">
-                <td className="px-6 py-4 font-bold text-white">
-                  {c.name}
-                  {c.status === 'scheduled' && (
-                    <div className="text-[10px] text-amber-400 font-normal mt-1">
-                      Scheduled for: {new Date(c.scheduled_at).toLocaleString()}
-                    </div>
-                  )}
-                </td>
-                <td className="px-6 py-4">
-                  <span className={cn(
-                    "px-2 py-1 text-[10px] font-black rounded-full uppercase",
-                    c.status === 'scheduled' ? "bg-amber-500/10 text-amber-400" : "bg-emerald-500/10 text-emerald-400"
-                  )}>
-                    {c.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
-                    <div 
-                      className={cn("h-full", c.status === 'scheduled' ? "bg-amber-500" : "bg-emerald-500")} 
-                      style={{ width: `${c.total_messages > 0 ? (c.sent_messages / c.total_messages) * 100 : 0}%` }} 
-                    />
-                  </div>
-                  <div className="text-[10px] text-soft-lavender/40 mt-1">{c.sent_messages} / {c.total_messages} {c.status === 'scheduled' ? 'queued' : 'sent'}</div>
-                </td>
-                <td className="px-6 py-4 text-soft-lavender/60 text-sm">
-                  {c.status === 'scheduled' ? new Date(c.scheduled_at).toLocaleDateString() : new Date(c.created_at).toLocaleDateString()}
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {c.status === 'scheduled' ? (
-                      <button 
-                        onClick={() => handleCancelSchedule(c.id)}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 text-amber-400 rounded-lg text-xs font-bold hover:bg-amber-500/20 transition-all"
-                      >
-                        <X size={14} />
-                        Cancel Schedule
-                      </button>
-                    ) : (
-                      <>
-                        <button className="p-2 hover:bg-white/10 rounded-lg text-soft-lavender/40 hover:text-white"><BarChart3 size={16} /></button>
+    <div className="space-y-6">
+      <div className="glass-panel p-6">
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-soft-lavender/40" size={18} />
+          <input 
+            type="text"
+            value={searchContact}
+            onChange={(e) => setSearchContact(e.target.value)}
+            placeholder="Search by campaign name, message or contact..."
+            className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-white outline-none focus:border-amethyst transition-all"
+          />
+        </div>
+      </div>
+
+      <div className="glass-panel overflow-hidden">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="border-b border-white/5 bg-white/5">
+              <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Date & Time</th>
+              <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Campaign / Message</th>
+              <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Contacts</th>
+              <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Status</th>
+              <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5">
+            {loading ? (
+              <tr><td colSpan={5} className="px-6 py-20 text-center"><RefreshCw className="animate-spin text-amethyst mx-auto" /></td></tr>
+            ) : filteredCampaigns.length === 0 ? (
+              <tr><td colSpan={5} className="px-6 py-20 text-center text-soft-lavender/40">No campaign history found.</td></tr>
+            ) : (
+              filteredCampaigns.map((c) => (
+                <tr key={c.id} className="hover:bg-white/5 transition-colors group">
+                  <td className="px-6 py-4 text-sm text-soft-lavender/60">
+                    {new Date(c.created_at).toLocaleString()}
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="font-bold text-white mb-1">{c.name}</div>
+                    <div className="text-xs text-soft-lavender/40 line-clamp-1">{c.message_content || "No message content"}</div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="text-sm text-white font-bold">{c.total_messages}</div>
+                    <div className="text-[10px] text-soft-lavender/40 uppercase tracking-widest">{c.sent_messages} Sent</div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={cn(
+                      "px-2 py-1 text-[10px] font-black rounded-full uppercase",
+                      c.status === 'scheduled' ? "bg-amber-500/10 text-amber-400" : 
+                      c.status === 'failed' ? "bg-red-500/10 text-red-400" :
+                      "bg-emerald-500/10 text-emerald-400"
+                    )}>
+                      {c.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {c.status === 'scheduled' ? (
+                        <button 
+                          onClick={() => handleCancelSchedule(c.id)}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 text-amber-400 rounded-lg text-xs font-bold hover:bg-amber-500/20 transition-all"
+                        >
+                          <X size={14} />
+                          Cancel
+                        </button>
+                      ) : (
                         <button 
                           onClick={() => handleDeleteCampaign(c.id)}
                           className="p-2 hover:bg-red-500/10 rounded-lg text-soft-lavender/40 hover:text-red-400"
                         >
                           <Trash2 size={16} />
                         </button>
-                      </>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
 
-function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { user: any, profile: any, onUpdate: () => void, onOpenModal: (type: any) => void, showNotify: (m: string, t?: 'success' | 'error' | 'info' | 'warning') => void }) {
+function SettingsView({ user, profile, onUpdate, onOpenModal, setView, showNotify }: { user: any, profile: any, onUpdate: () => void, onOpenModal: (type: any) => void, setView: (v: View) => void, showNotify: (m: string, t?: 'success' | 'error' | 'info' | 'warning') => void }) {
   const [serverUrl, setServerUrl] = useState(() => {
     return localStorage.getItem('whatsapp_server_url') || '';
   });
@@ -4255,7 +4514,73 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
   };
 
   return (
-    <div className="max-w-2xl space-y-8">
+    <div className="space-y-10">
+      {/* About Techtaire Section */}
+      <div className="glass-panel p-10 space-y-8">
+        <div className="flex items-center gap-4 mb-2">
+          <div className="w-12 h-12 bg-amethyst/20 rounded-2xl flex items-center justify-center text-amethyst">
+            <Info size={24} />
+          </div>
+          <div>
+            <h3 className="text-2xl font-black text-white tracking-tight">About Techtaire</h3>
+            <p className="text-soft-lavender/40 text-sm font-bold uppercase tracking-widest">Platform Overview</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+          <div className="space-y-6">
+            <p className="text-soft-lavender/80 leading-relaxed">
+              Techtaire is a powerful WhatsApp marketing platform designed to help businesses reach their customers effectively. Our suite of tools enables seamless bulk messaging, automated responses, and detailed campaign tracking.
+            </p>
+            
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 text-soft-lavender/60">
+                <div className="w-1.5 h-1.5 bg-amethyst rounded-full" />
+                <span className="text-sm">Unlimited Bulk Messaging</span>
+              </div>
+              <div className="flex items-center gap-3 text-soft-lavender/60">
+                <div className="w-1.5 h-1.5 bg-amethyst rounded-full" />
+                <span className="text-sm">Smart AI Message Generation</span>
+              </div>
+              <div className="flex items-center gap-3 text-soft-lavender/60">
+                <div className="w-1.5 h-1.5 bg-amethyst rounded-full" />
+                <span className="text-sm">Real-time Campaign Analytics</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="p-6 bg-white/5 border border-white/10 rounded-2xl">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Current Plan</span>
+                <span className="px-3 py-1 bg-amethyst/20 text-amethyst text-[10px] font-black rounded-full uppercase tracking-widest">
+                  {profile?.plan || 'Free'}
+                </span>
+              </div>
+              <div className="text-2xl font-black text-white mb-1">
+                {profile?.plan === 'Yearly' ? '₹23,999' : profile?.plan === 'Monthly' ? '₹2,999' : '₹0'}
+                <span className="text-sm font-normal text-soft-lavender/40 ml-2">
+                  /{profile?.plan === 'Yearly' ? 'year' : 'month'}
+                </span>
+              </div>
+              {profile?.plan === 'Yearly' && (
+                <div className="mt-2 text-xs text-amber-400 font-bold flex items-center gap-1">
+                  <Zap size={12} /> ⭐ Recommended Plan
+                </div>
+              )}
+            </div>
+            
+            <button 
+              onClick={() => setView('plans')}
+              className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-bold hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+            >
+              Upgrade Plan
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="glass-panel p-10 space-y-8">
         <h3 className="text-xl font-black text-white tracking-tight">WhatsApp Connection</h3>
         <p className="text-soft-lavender/60 text-sm">
@@ -4297,34 +4622,8 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
       <div className="glass-panel p-10 space-y-8">
         <h3 className="text-xl font-black text-white tracking-tight">Account Settings</h3>
         <div className="space-y-6">
-          <div className="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5">
-            <div>
-              <p className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest mb-1">Current Plan</p>
-              <p className="text-lg font-black text-white uppercase">{profile?.plan || 'Free'}</p>
-            </div>
-            <div className="w-10 h-10 bg-amethyst/20 rounded-xl flex items-center justify-center text-amethyst">
-              <Award size={24} />
-            </div>
-          </div>
-          {profile?.trial_expiry && (
-            <div className="p-4 bg-emerald-500/10 rounded-2xl border border-emerald-500/20">
-              <p className="text-xs font-black text-emerald-400 uppercase tracking-widest mb-1">Trial Status</p>
-              <p className="text-sm text-emerald-400/80">
-                Your free trial expires on {new Date(profile.trial_expiry).toLocaleString()}
-              </p>
-            </div>
-          )}
-        </div>
-        <div className="space-y-4">
-          <button className="w-full py-4 bg-royal-purple text-white rounded-2xl font-bold hover:shadow-lg hover:shadow-royal-purple/20 transition-all">Upgrade Subscription</button>
-        </div>
-      </div>
-
-      <div className="glass-panel p-10 space-y-8">
-        <h3 className="text-xl font-black text-white tracking-tight">Information & Support</h3>
-        <div className="grid grid-cols-1 gap-4">
           <button 
-            onClick={() => onOpenModal('trade')}
+            onClick={() => onOpenModal('terms')}
             className="w-full p-6 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-between group hover:bg-white/10 transition-all"
           >
             <div className="flex items-center gap-4">
@@ -4332,8 +4631,8 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, showNotify }: { us
                 <Shield size={24} />
               </div>
               <div className="text-left">
-                <p className="font-bold text-white">Trade Terms and Conditions</p>
-                <p className="text-xs text-soft-lavender/40">Business and usage policies</p>
+                <p className="font-bold text-white">Terms of Service</p>
+                <p className="text-xs text-soft-lavender/40">Our legal agreement and policies</p>
               </div>
             </div>
             <ChevronRight size={20} className="text-soft-lavender/20 group-hover:text-white transition-colors" />
@@ -4392,7 +4691,7 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
     fetchStats();
     const interval = setInterval(fetchStats, 60000);
     return () => clearInterval(interval);
-  }, [user.id]);
+  }, [user?.id]);
   const getCurrentUserEmail = () => user?.email || user?.uid || 'anonymous';
   const [stats, setStats] = useState({
     totalContacts: 0,

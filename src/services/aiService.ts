@@ -13,7 +13,9 @@ export const enhanceMessage = async (
 
   const ai = new GoogleGenAI({ apiKey });
   
-  const prompt = `Enhance this WA message: ${message}\nTone: ${tone}. Type: ${type}.\nReturn ONLY enhanced message.`;
+  const prompt = `Enhance this WA message: ${message}
+Tone: ${tone}. Type: ${type}.
+Return ONLY enhanced message.`;
 
   try {
     const response = await ai.models.generateContent({
