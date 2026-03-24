@@ -109,6 +109,16 @@ async function startServer() {
       req.rawBody = buf;
     }
   }));
+
+  app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(200);
+    }
+    next();
+  });
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // --- Email System ---
@@ -157,9 +167,10 @@ async function startServer() {
 
   const httpServer = createServer(app);
   const io = new SocketIOServer(httpServer, {
-    cors: {
+    cors: { 
       origin: "*",
-      methods: ["GET", "POST"]
+      methods: ["GET", "POST", "DELETE", "OPTIONS"],
+      credentials: true
     }
   });
 
