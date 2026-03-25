@@ -28,6 +28,10 @@ import cors from "cors";
 
 dotenv.config();
 
+import { Resend } from 'resend';
+
+const resend = new Resend('re_MEL7zNNX_2DPKfM4BhBke49LXUrrkKbhA');
+
 // Initialize Supabase Admin lazily to prevent crash on missing env vars
 let supabaseAdminInstance: any = null;
 const getSupabaseAdmin = () => {
@@ -122,6 +126,61 @@ async function startServer() {
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // --- Email System ---
+  app.post("/api/email/send-plan-request", async (req, res) => {
+    const { userName, userEmail, selectedPlan } = req.body;
+    
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 0; }
+    .container { max-width: 600px; margin: 20px auto; background: #ffffff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+    .header { text-align: center; padding-bottom: 20px; border-bottom: 2px solid #6b21a8; }
+    .header h1 { color: #6b21a8; margin: 0; }
+    .content { padding: 20px 0; line-height: 1.6; color: #333333; }
+    .content p { margin: 10px 0; }
+    .highlight { font-weight: bold; color: #6b21a8; }
+    .footer { text-align: center; padding-top: 20px; border-top: 1px solid #dddddd; font-size: 12px; color: #777777; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>New Plan Selection</h1>
+    </div>
+    <div class="content">
+      <p>Hello Admin,</p>
+      <p>A user has just selected a new plan on Techtaire. Here are the details:</p>
+      <ul>
+        <li><span class="highlight">User Name:</span> ${userName}</li>
+        <li><span class="highlight">User Email:</span> ${userEmail}</li>
+        <li><span class="highlight">Selected Plan:</span> ${selectedPlan}</li>
+      </ul>
+      <p>Please review the request and proceed with the necessary actions.</p>
+    </div>
+    <div class="footer">
+      <p>&copy; 2024 Techtaire. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>
+    `;
+
+    try {
+      const data = await resend.emails.send({
+        from: 'Techtaire <onboarding@resend.dev>',
+        to: 'triodevelopers03@gmail.com',
+        subject: 'New Plan Selection - Techtaire',
+        html: html,
+      });
+      res.json({ success: true, data });
+    } catch (error: any) {
+      console.error("Resend Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/email/send", async (req, res) => {
     const { to, subject, html, type, data } = req.body;
     

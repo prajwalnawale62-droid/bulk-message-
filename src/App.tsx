@@ -735,6 +735,20 @@ const DashboardStat = ({ label, value, icon: Icon, color }: { label: string, val
 
 export default function App() {
   const [view, setView] = useState<View>('landing');
+  const [isIntroComplete, setIsIntroComplete] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [showSplash, setShowSplash] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [logoClicks, setLogoClicks] = useState(0);
+
+  useEffect(() => {
+    if (user && profile?.plan === 'pending' && view !== 'plans' && view !== 'settings') {
+      setView('plans');
+    }
+  }, [user, profile, view]);
 
   useEffect(() => {
     localStorage.setItem('techtaire_active_view', view);
@@ -753,17 +767,10 @@ export default function App() {
 
     return () => window.removeEventListener('error', handleGlobalError);
   }, []);
-  const [isIntroComplete, setIsIntroComplete] = useState(false);
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [showSplash, setShowSplash] = useState(true);
-  const [showWelcome, setShowWelcome] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [logoClicks, setLogoClicks] = useState(0);
+
   const isAdmin = user?.email === 'prajwalnawale3040@gmail.com';
   const getCurrentUserEmail = () => user?.email || user?.uid || 'anonymous';
-  const isExpired = profile?.plan === 'free_trial' && profile?.trial_expiry && new Date(profile.trial_expiry) < new Date();
+  const isExpired = profile?.trial_expiry && new Date(profile.trial_expiry) < new Date();
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
@@ -835,18 +842,28 @@ export default function App() {
       setView('login');
       return;
     }
-    if (plan.amount === 0) {
-      if (profile?.plan === 'free_trial') {
-        showNotify("You are already on the Free Trial plan.", "info");
-        return;
-      }
-      if (confirm("Activate 1-Minute Free Trial? This is a demo plan to explore features.")) {
-        activateFreeTrial();
-      }
+    
+    if (plan.amount === 1) {
+      // Test plan -> show QR code
+      setSelectedPlan(plan);
+      setShowPaymentModal(true);
       return;
     }
-    setSelectedPlan(plan);
-    setShowPaymentModal(true);
+
+    // For Free, Monthly, Yearly plans
+    try {
+      showNotify("Sending request to admin...", "info");
+      await axios.post('/api/email/send-plan-request', {
+        userName: profile?.name || user.email.split('@')[0],
+        userEmail: user.email,
+        selectedPlan: plan.name
+      });
+      
+      showNotify(`Request sent for ${plan.name}. Please check your email for the verification code and enter it in Settings.`, 'success');
+      setView('settings');
+    } catch (err) {
+      showNotify("Failed to send request. Please try again.", 'error');
+    }
   };
 
   const activateFreeTrial = async () => {
@@ -858,7 +875,7 @@ export default function App() {
       const { error } = await supabase
         .from('profiles')
         .update({ 
-          plan: 'free_trial',
+          plan: 'free_plan',
           credits: 100,
           trial_expiry: expiry.toISOString()
         })
@@ -1048,7 +1065,7 @@ export default function App() {
           .insert([{ 
             id: user.id, 
             email: user.email, 
-            plan: 'free_trial', 
+            plan: 'pending', 
             credits: 100,
             use_case: user.user_metadata?.use_case || '',
             trial_expiry: trialExpiry.toISOString(),
@@ -1252,14 +1269,14 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
             </div>
 
             <nav className="px-6 space-y-3">
-              <SidebarItem icon={LayoutDashboard} label="Dashboard" active={view === 'dashboard'} onClick={() => setView('dashboard')} isOpen={isSidebarOpen} />
-              <SidebarItem icon={Users} label="Contacts" active={view === 'contacts'} onClick={() => setView('contacts')} isOpen={isSidebarOpen} disabled={isExpired} />
-              <SidebarItem icon={SendHorizontal} label="Messaging" active={view === 'messaging'} onClick={() => setView('messaging')} isOpen={isSidebarOpen} disabled={isExpired} />
-              <SidebarItem icon={History} label="History" active={view === 'history'} onClick={() => setView('history')} isOpen={isSidebarOpen} disabled={isExpired} />
-              <SidebarItem icon={Lamp as any} label="Guide" active={view === 'guide'} onClick={() => setView('guide')} isOpen={isSidebarOpen} />
+              <SidebarItem icon={LayoutDashboard} label="Dashboard" active={view === 'dashboard'} onClick={() => setView('dashboard')} isOpen={isSidebarOpen} disabled={profile?.plan === 'pending'} disabledMessage="Please select a plan to continue." />
+              <SidebarItem icon={Users} label="Contacts" active={view === 'contacts'} onClick={() => setView('contacts')} isOpen={isSidebarOpen} disabled={isExpired || profile?.plan === 'pending'} disabledMessage={profile?.plan === 'pending' ? "Please select a plan to continue." : undefined} />
+              <SidebarItem icon={SendHorizontal} label="Messaging" active={view === 'messaging'} onClick={() => setView('messaging')} isOpen={isSidebarOpen} disabled={isExpired || profile?.plan === 'pending'} disabledMessage={profile?.plan === 'pending' ? "Please select a plan to continue." : undefined} />
+              <SidebarItem icon={History} label="History" active={view === 'history'} onClick={() => setView('history')} isOpen={isSidebarOpen} disabled={isExpired || profile?.plan === 'pending'} disabledMessage={profile?.plan === 'pending' ? "Please select a plan to continue." : undefined} />
+              <SidebarItem icon={Lamp as any} label="Guide" active={view === 'guide'} onClick={() => setView('guide')} isOpen={isSidebarOpen} disabled={profile?.plan === 'pending'} disabledMessage="Please select a plan to continue." />
               <SidebarItem icon={CreditCard} label="Plans" active={view === 'plans'} onClick={() => setView('plans')} isOpen={isSidebarOpen} />
-              <SidebarItem icon={Settings} label="Settings" active={view === 'settings'} onClick={() => setView('settings')} isOpen={isSidebarOpen} disabled={isExpired} />
-              {isAdmin && <SidebarItem icon={Shield} label="Admin" active={view === 'admin'} onClick={() => setView('admin')} isOpen={isSidebarOpen} />}
+              <SidebarItem icon={Settings} label="Settings" active={view === 'settings'} onClick={() => setView('settings')} isOpen={isSidebarOpen} />
+              {isAdmin && <SidebarItem icon={Shield} label="Admin" active={view === 'admin'} onClick={() => setView('admin')} isOpen={isSidebarOpen} disabled={profile?.plan === 'pending'} disabledMessage="Please select a plan to continue." />}
             </nav>
 
             <div className="absolute bottom-8 left-0 w-full px-6">
@@ -1290,7 +1307,7 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
               </div>
 
               <div className="flex items-center gap-8">
-                {profile?.plan === 'free_trial' && profile?.trial_expiry && (
+                {profile?.plan === 'free_plan' && profile?.trial_expiry && (
                   <TrialTimer expiry={profile.trial_expiry} />
                 )}
                 <div className="flex flex-col items-end">
@@ -1447,9 +1464,9 @@ CREATE POLICY "Admins can view all orders" ON orders FOR SELECT USING (auth.jwt(
   );
 }
 
-const SidebarItem = ({ icon: Icon, label, active, onClick, isOpen, disabled }: { icon: any, label: string, active: boolean, onClick: () => void, isOpen: boolean, disabled?: boolean }) => (
+const SidebarItem = ({ icon: Icon, label, active, onClick, isOpen, disabled, disabledMessage }: { icon: any, label: string, active: boolean, onClick: () => void, isOpen: boolean, disabled?: boolean, disabledMessage?: string }) => (
   <button
-    onClick={disabled ? () => alert("Your free trial has expired. Please upgrade to continue.") : onClick}
+    onClick={disabled ? () => alert(disabledMessage || "Your free trial has expired. Please upgrade to continue.") : onClick}
     className={cn(
       "w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all duration-500 group relative",
       active 
@@ -1644,21 +1661,21 @@ const LandingPage = ({ setView, user, setLegalModal }: { setView: (v: View) => v
       name: 'Free Plan', 
       price: '0', 
       amount: 0, 
-      features: ['1 Day Access', 'Demo Messaging', 'Basic AI Assistant', 'Limited Contacts'], 
+      features: ['Powered by UltraMsg (third party)', '100 messages daily', '1 day free trial', 'AI Enhancer'], 
       description: 'Perfect for exploring our platform features.'
     },
     { 
       name: 'Monthly Plan', 
       price: '2,999', 
       amount: 2999, 
-      features: ['Unlimited Messages', 'AI Enhancement', 'Priority Support', 'File Attachments', 'Advanced Analytics'],
+      features: ['3000 messages daily', 'Own server', 'Delay system (no ban risk)', 'AI Enhancer', 'AI Message Generator', 'Images, Videos and Documents'],
       description: 'The complete solution for growing businesses.'
     },
     { 
       name: 'Yearly Plan', 
       price: '23,999', 
       amount: 23999, 
-      features: ['Everything in Monthly', '2 Months Free', 'Dedicated Manager', 'Custom Templates'],
+      features: ['3000 messages daily', 'Own server', 'Delay system (no ban risk)', 'AI Enhancer', 'AI Message Generator', 'Images, Videos and Documents', 'Custom Templates', '33% off'],
       isPopular: true,
       description: 'Best value for long-term business growth.'
     }
@@ -1931,6 +1948,7 @@ const LandingPage = ({ setView, user, setLegalModal }: { setView: (v: View) => v
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-soft-lavender/60">
+              <a href="https://instagram.com/trio_developers_00" target="_blank" rel="noopener noreferrer" className="hover:text-royal-purple transition-colors">Instagram</a>
               <button onClick={() => setLegalModal('privacy')} className="hover:text-royal-purple transition-colors">Privacy Policy</button>
               <button onClick={() => setLegalModal('terms')} className="hover:text-royal-purple transition-colors">Terms & Conditions</button>
               <button onClick={() => setLegalModal('copyright')} className="hover:text-royal-purple transition-colors">Copyright Notice</button>
@@ -2630,28 +2648,35 @@ const PricingPage = ({ setView, isDashboard = false, onSelect, currentPlan }: { 
       name: 'Free Plan', 
       price: '0', 
       amount: 0, 
-      features: ['1 Day Access', 'Demo Messaging', 'Basic AI Assistant', 'Limited Contacts'], 
+      features: ['Powered by UltraMsg (third party)', '100 messages daily', '1 day free trial', 'AI Enhancer'], 
       description: 'Perfect for exploring our platform features.'
     },
     { 
       name: 'Monthly Plan', 
       price: '2,999', 
       amount: 2999, 
-      features: ['Unlimited Messages', 'AI Enhancement', 'Priority Support', 'File Attachments', 'Advanced Analytics'],
+      features: ['3000 messages daily', 'Own server', 'Delay system (no ban risk)', 'AI Enhancer', 'AI Message Generator', 'Images, Videos and Documents'],
       description: 'The complete solution for growing businesses.'
     },
     { 
       name: 'Yearly Plan', 
       price: '23,999', 
       amount: 23999, 
-      features: ['Everything in Monthly', '2 Months Free', 'Dedicated Manager', 'Custom Templates'],
+      features: ['3000 messages daily', 'Own server', 'Delay system (no ban risk)', 'AI Enhancer', 'AI Message Generator', 'Images, Videos and Documents', 'Custom Templates', '33% off'],
       isPopular: true,
       description: 'Best value for long-term business growth.'
+    },
+    {
+      name: 'Test Plan',
+      price: '1',
+      amount: 1,
+      features: ['Testing purposes only'],
+      description: 'For testing payments.'
     }
   ];
 
   const isCurrent = (plan: any) => {
-    if (plan.amount === 0 && currentPlan === 'free_trial') return true;
+    if (plan.amount === 0 && currentPlan === 'free_plan') return true;
     if (currentPlan === plan.name.toLowerCase().replace(' ', '_')) return true;
     return false;
   };
@@ -2676,7 +2701,7 @@ const PricingPage = ({ setView, isDashboard = false, onSelect, currentPlan }: { 
               whileHover={{ y: -10 }}
               className={cn(
                 "glass-panel p-10 flex flex-col gap-8 relative group transition-all duration-500",
-                plan.isPopular ? "border-amethyst/50 shadow-[0_20px_50px_rgba(155,89,182,0.15)] scale-105 z-10" : "hover:border-white/20"
+                plan.isPopular ? "border-amethyst/50 shadow-[0_20px_50px_rgba(155,89,182,0.15)] scale-105 z-10" : "hover:border-amethyst/30 hover:shadow-[0_20px_50px_rgba(155,89,182,0.1)]"
               )}
             >
               {plan.isPopular && (
@@ -2719,6 +2744,11 @@ const PricingPage = ({ setView, isDashboard = false, onSelect, currentPlan }: { 
               </button>
             </motion.div>
           ))}
+        </div>
+
+        <div className="mt-20 flex flex-col items-center justify-center gap-6">
+          <p className="text-soft-lavender/60 text-sm font-bold uppercase tracking-widest">Available on</p>
+          <img src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg" alt="Get it on Google Play" className="h-12 opacity-80 hover:opacity-100 transition-opacity cursor-pointer" />
         </div>
       </div>
     </section>
@@ -3363,7 +3393,6 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
   const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
   const [selectedBatch, setSelectedBatch] = useState('all');
   const [contacts, setContacts] = useState<any[]>([]);
-  const [selectedContact, setSelectedContact] = useState<any>(null);
   const [contactCount, setContactCount] = useState(0);
 
   const fetchContacts = async () => {
@@ -3402,16 +3431,6 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
   const [generateLength, setGenerateLength] = useState('Medium');
   const [generateLanguage, setGenerateLanguage] = useState('English');
 
-  const getStrength = (msg: string) => {
-    const len = msg.length;
-    if (len === 0) return { label: 'Weak', color: 'bg-red-500', width: '0%' };
-    if (len < 20) return { label: 'Weak', color: 'bg-red-500', width: '25%' };
-    if (len < 50) return { label: 'Fair', color: 'bg-amber-500', width: '50%' };
-    if (len < 100) return { label: 'Good', color: 'bg-blue-500', width: '75%' };
-    return { label: 'Strong', color: 'bg-emerald-500', width: '100%' };
-  };
-  const strength = getStrength(message);
-
   const handleAiGenerate = async () => {
     if (!generatePrompt) return;
     setIsGenerating(true);
@@ -3443,7 +3462,7 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
 
   const [batches, setBatches] = useState<string[]>([]);
 
-  const isExpired = profile?.plan === 'free_trial' && profile?.trial_expiry && new Date(profile.trial_expiry) < new Date();
+  const isExpired = profile?.trial_expiry && new Date(profile.trial_expiry) < new Date();
   
   const charCount = message.length;
   
@@ -3627,7 +3646,7 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
         });
         
         socket?.on('limit_reached', () => {
-          showNotify("Daily limit of 3000 messages reached", "error");
+          showNotify("Daily message limit reached", "error");
         });
         
         socket?.on('queue_complete', async (data: any) => {
@@ -3678,62 +3697,6 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
 
   return (
     <div className="space-y-10">
-      {/* About Techtaire Section */}
-      <div className="glass-panel p-10 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-amethyst/10 blur-[100px] rounded-full -mr-32 -mt-32" />
-        <div className="relative z-10">
-          <h3 className="text-2xl font-black text-white tracking-tight mb-6">About Techtaire</h3>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
-            <div className="space-y-6">
-              <p className="text-soft-lavender/80 leading-relaxed">
-                Techtaire is a cutting-edge WhatsApp marketing platform designed to empower businesses with seamless, reliable, and efficient bulk messaging solutions. Our mission is to bridge the gap between businesses and their customers through the world's most popular messaging app.
-              </p>
-              <div className="grid grid-cols-3 gap-4">
-                {[
-                  { label: 'Free Plan', price: '₹0', active: profile?.plan === 'free_trial' },
-                  { label: 'Monthly', price: '₹2,999', active: profile?.plan === 'monthly' },
-                  { label: 'Yearly', price: '₹23,999', active: profile?.plan === 'yearly', recommended: true }
-                ].map(p => (
-                  <div key={p.label} className={cn(
-                    "p-4 rounded-2xl border transition-all relative",
-                    p.active ? "bg-amethyst/10 border-amethyst" : "bg-white/5 border-white/10",
-                    p.recommended && "border-amber-500/50"
-                  )}>
-                    {p.recommended && (
-                      <div className="absolute -top-2 -right-2 bg-amber-500 text-black text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">
-                        ⭐ Recommended
-                      </div>
-                    )}
-                    <div className="text-[10px] font-black text-soft-lavender/40 uppercase tracking-widest mb-1">{p.label}</div>
-                    <div className="text-lg font-black text-white">{p.price}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="glass-panel p-6 bg-white/5 border-white/10 space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-amethyst/20 rounded-xl flex items-center justify-center text-amethyst">
-                  <Zap size={20} />
-                </div>
-                <div>
-                  <h4 className="font-bold text-white">Smart Automation</h4>
-                  <p className="text-xs text-soft-lavender/40">AI-powered message generation and scheduling</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-400">
-                  <ShieldCheck size={20} />
-                </div>
-                <div>
-                  <h4 className="font-bold text-white">Secure & Reliable</h4>
-                  <p className="text-xs text-soft-lavender/40">Enterprise-grade security for your communication</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
       <div className="space-y-8">
         {isExpired && (
@@ -3780,23 +3743,6 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
                   <option value="all" className="bg-deep-night">All Contacts ({contactCount})</option>
                   {batches.map(b => (
                     <option key={b} value={b} className="bg-deep-night">{b}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex-1 space-y-2">
-
-                <select 
-                  value={selectedContact?.id || ''}
-                  onChange={(e) => {
-                    const contact = contacts.find(c => c.id === e.target.value);
-                    setSelectedContact(contact || null);
-                  }}
-                  disabled={isExpired}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white outline-none focus:border-amethyst transition-all"
-                >
-                  <option value="" className="bg-deep-night">Select a contact...</option>
-                  {contacts.filter(c => selectedBatch === 'all' || c.batch_name === selectedBatch).map(c => (
-                    <option key={c.id} value={c.id} className="bg-deep-night">{c.name} ({c.whatsapp_number})</option>
                   ))}
                 </select>
               </div>
@@ -3925,27 +3871,6 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
                 </div>
               )}
             </div>
-
-            <div className="space-y-2">
-              <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
-
-                <span className={cn(
-                  "transition-colors",
-                  strength.label === 'Weak' ? 'text-red-500' :
-                  strength.label === 'Fair' ? 'text-amber-500' :
-                  strength.label === 'Good' ? 'text-blue-500' :
-                  'text-emerald-500'
-                )}>{strength.label}</span>
-              </div>
-              <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                <motion.div 
-                  className={cn("h-full", strength.color)}
-                  initial={{ width: 0 }}
-                  animate={{ width: strength.width }}
-                  transition={{ duration: 0.3 }}
-                />
-              </div>
-            </div>
           </div>
 
           <div className="flex justify-between items-center">
@@ -3996,9 +3921,9 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
             </button>
           </div>
           
-          {profile?.plan === 'free_trial' && (
+          {profile?.plan === 'free_plan' && (
             <p className="text-[10px] text-amethyst font-black uppercase tracking-widest text-center">
-              Free Trial Active: 10 Messages / 50 Contacts Limit
+              Free Plan Active: 100 Messages Daily Limit
             </p>
           )}
         </div>
@@ -4232,7 +4157,7 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-2xl bg-[#1a1400] border border-amber-500/20 rounded-3xl p-8 flex flex-col gap-6 overflow-hidden shadow-[0_0_50px_rgba(245,158,11,0.1)]"
+              className="relative w-full max-w-2xl bg-[#1a1400] border border-amber-500/20 rounded-3xl p-8 flex flex-col gap-6 overflow-y-auto max-h-[90vh] shadow-[0_0_50px_rgba(245,158,11,0.1)]"
             >
               <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 blur-[100px] rounded-full -mr-32 -mt-32 pointer-events-none" />
               
@@ -4499,6 +4424,70 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, setView, showNotif
   const [serverUrl, setServerUrl] = useState(() => {
     return localStorage.getItem('whatsapp_server_url') || '';
   });
+  const [verificationCode, setVerificationCode] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+
+  const handleVerifyCode = async () => {
+    if (!verificationCode.trim()) {
+      showNotify("Please enter a verification code.", "error");
+      return;
+    }
+
+    const codeRegex = /^TECH-[A-Z0-9]{4}$/i;
+    if (!codeRegex.test(verificationCode)) {
+      showNotify("Invalid code format. Expected format: TECH-XXXX", "error");
+      return;
+    }
+
+    setIsVerifying(true);
+    try {
+      let newPlan = 'monthly_plan';
+      let credits = 3000;
+      let expiry = new Date();
+      
+      const codeUpper = verificationCode.toUpperCase();
+      if (codeUpper === 'TECH-FREE') {
+        newPlan = 'free_plan';
+        credits = 100;
+        expiry.setDate(expiry.getDate() + 1); // 1 day
+      } else if (codeUpper === 'TECH-YEAR') {
+        newPlan = 'yearly_plan';
+        credits = 3000;
+        expiry.setFullYear(expiry.getFullYear() + 1); // 1 year
+      } else {
+        newPlan = 'monthly_plan';
+        credits = 3000;
+        expiry.setMonth(expiry.getMonth() + 1); // 1 month
+      }
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ 
+          plan: newPlan,
+          credits: credits,
+          trial_expiry: expiry.toISOString()
+        })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      showNotify("Plan activated successfully!", "success");
+      setVerificationCode('');
+      onUpdate();
+      
+      confetti({
+        particleCount: 150,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: [THEME.primary, THEME.secondary, '#ffffff']
+      });
+      
+    } catch (err: any) {
+      showNotify("Failed to activate plan: " + err.message, "error");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
 
   const handleSaveUrl = () => {
     if (serverUrl.trim()) {
@@ -4554,16 +4543,16 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, setView, showNotif
               <div className="flex justify-between items-center mb-4">
                 <span className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Current Plan</span>
                 <span className="px-3 py-1 bg-amethyst/20 text-amethyst text-[10px] font-black rounded-full uppercase tracking-widest">
-                  {profile?.plan || 'Free'}
+                  {profile?.plan ? profile.plan.replace('_', ' ') : 'Free Plan'}
                 </span>
               </div>
               <div className="text-2xl font-black text-white mb-1">
-                {profile?.plan === 'Yearly' ? '₹23,999' : profile?.plan === 'Monthly' ? '₹2,999' : '₹0'}
+                {profile?.plan === 'yearly_plan' ? '₹23,999' : profile?.plan === 'monthly_plan' ? '₹2,999' : '₹0'}
                 <span className="text-sm font-normal text-soft-lavender/40 ml-2">
-                  /{profile?.plan === 'Yearly' ? 'year' : 'month'}
+                  /{profile?.plan === 'yearly_plan' ? 'year' : 'month'}
                 </span>
               </div>
-              {profile?.plan === 'Yearly' && (
+              {profile?.plan === 'yearly_plan' && (
                 <div className="mt-2 text-xs text-amber-400 font-bold flex items-center gap-1">
                   <Zap size={12} /> ⭐ Recommended Plan
                 </div>
@@ -4577,6 +4566,38 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, setView, showNotif
               Upgrade Plan
               <ChevronRight size={18} />
             </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="glass-panel p-10 space-y-8">
+        <h3 className="text-xl font-black text-white tracking-tight">Plan Activation</h3>
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Verification Code</label>
+            <div className="flex gap-4">
+              <input 
+                type="text" 
+                value={verificationCode}
+                onChange={(e) => setVerificationCode(e.target.value.toUpperCase())}
+                className="flex-1 bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none transition-all focus:border-amethyst focus:ring-1 focus:ring-amethyst uppercase"
+                placeholder="TECH-XXXX"
+                maxLength={9}
+              />
+              <button
+                onClick={handleVerifyCode}
+                disabled={isVerifying}
+                className="btn-primary py-4 px-8 rounded-2xl disabled:opacity-50"
+              >
+                {isVerifying ? 'Verifying...' : 'Activate Plan'}
+              </button>
+            </div>
+          </div>
+          
+          <div className="p-6 bg-white/5 rounded-2xl border border-white/10">
+            <p className="text-sm text-soft-lavender/80">
+              Enter the verification code you received via email to activate your selected plan.
+            </p>
           </div>
         </div>
       </div>
@@ -4704,9 +4725,11 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!user) return;
+    
+    let isMounted = true;
+
     const fetchDashboardData = async () => {
-      if (!user) return;
-      setLoading(true);
       try {
         // 1. Total Contacts
         const { count: contactCount } = await supabase
@@ -4724,21 +4747,23 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
         const totalSent = campaigns?.reduce((acc, c) => acc + (c.sent_messages || 0), 0) || 0;
         const activeCount = campaigns?.filter(c => c.status === 'pending' || c.status === 'sending').length || 0;
 
-        setStats({
-          totalContacts: contactCount || 0,
-          messagesSent: totalSent,
-          activeCampaigns: activeCount,
-          deliveryRate: '98.5%'
-        });
+        if (isMounted) {
+          setStats({
+            totalContacts: contactCount || 0,
+            messagesSent: totalSent,
+            activeCampaigns: activeCount,
+            deliveryRate: '98.5%'
+          });
 
-        // 3. Recent Activity
-        const activity = campaigns?.slice(0, 4).map(c => ({
-          title: `Campaign "${c.name}" ${c.status}`,
-          time: new Date(c.created_at).toLocaleTimeString(),
-          icon: SendHorizontal,
-          color: c.status === 'completed' ? 'text-emerald-400' : 'text-amber-400'
-        })) || [];
-        setRecentActivity(activity);
+          // 3. Recent Activity
+          const activity = campaigns?.slice(0, 4).map(c => ({
+            title: `Campaign "${c.name}" ${c.status}`,
+            time: new Date(c.created_at).toLocaleTimeString(),
+            icon: SendHorizontal,
+            color: c.status === 'completed' ? 'text-emerald-400' : 'text-amber-400'
+          })) || [];
+          setRecentActivity(activity);
+        }
 
         // 4. Real Chart Data based on real stats
         const { data: campaignHistory } = await supabase
@@ -4748,32 +4773,54 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
           .order('created_at', { ascending: true })
           .limit(7);
 
-        if (campaignHistory && campaignHistory.length > 0) {
-          setChartData(campaignHistory.map(c => ({
-            name: new Date(c.created_at).toLocaleDateString('en-US', { weekday: 'short' }),
-            sent: c.sent_messages || 0,
-            delivered: Math.floor((c.sent_messages || 0) * 0.98)
-          })));
-        } else {
-          setChartData([
-            { name: 'Mon', sent: 0, delivered: 0 },
-            { name: 'Tue', sent: 0, delivered: 0 },
-            { name: 'Wed', sent: 0, delivered: 0 },
-            { name: 'Thu', sent: 0, delivered: 0 },
-            { name: 'Fri', sent: 0, delivered: 0 },
-            { name: 'Sat', sent: 0, delivered: 0 },
-            { name: 'Sun', sent: 0, delivered: 0 },
-          ]);
+        if (isMounted) {
+          if (campaignHistory && campaignHistory.length > 0) {
+            setChartData(campaignHistory.map(c => ({
+              name: new Date(c.created_at).toLocaleDateString('en-US', { weekday: 'short' }),
+              sent: c.sent_messages || 0,
+              delivered: Math.floor((c.sent_messages || 0) * 0.98)
+            })));
+          } else {
+            setChartData([
+              { name: 'Mon', sent: 0, delivered: 0 },
+              { name: 'Tue', sent: 0, delivered: 0 },
+              { name: 'Wed', sent: 0, delivered: 0 },
+              { name: 'Thu', sent: 0, delivered: 0 },
+              { name: 'Fri', sent: 0, delivered: 0 },
+              { name: 'Sat', sent: 0, delivered: 0 },
+              { name: 'Sun', sent: 0, delivered: 0 },
+            ]);
+          }
         }
 
       } catch (err) {
         console.error(err);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
 
     fetchDashboardData();
+
+    const contactsSubscription = supabase
+      .channel('contacts_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts', filter: `user_id=eq.${user.id}` }, () => {
+        fetchDashboardData();
+      })
+      .subscribe();
+
+    const campaignsSubscription = supabase
+      .channel('campaigns_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'campaigns', filter: `user_id=eq.${user.id}` }, () => {
+        fetchDashboardData();
+      })
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(contactsSubscription);
+      supabase.removeChannel(campaignsSubscription);
+    };
   }, [user]);
 
   if (loading) {
@@ -4793,9 +4840,13 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
           </div>
           <div>
             <p className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Current Subscription</p>
-            <h3 className="text-xl font-black text-white uppercase">{profile?.plan || 'Free Trial'}</h3>
-            {profile?.plan === 'free_trial' && (
-              <p className="text-[10px] text-amber-400 font-bold animate-pulse">DEMO EXPIRES IN 1 MINUTE</p>
+            <h3 className="text-xl font-black text-white uppercase">{profile?.plan ? profile.plan.replace('_', ' ') : 'Free Plan'}</h3>
+            {profile?.trial_expiry && (
+              <p className={cn("text-[10px] font-bold mt-1", new Date(profile.trial_expiry) < new Date() ? "text-red-500" : "text-amber-400")}>
+                {new Date(profile.trial_expiry) < new Date() 
+                  ? "PLAN EXPIRED" 
+                  : `EXPIRES IN ${Math.ceil((new Date(profile.trial_expiry).getTime() - new Date().getTime()) / (1000 * 3600 * 24))} DAYS`}
+              </p>
             )}
           </div>
         </div>
@@ -4807,12 +4858,10 @@ const DashboardView = ({ user, profile, setView }: { user: any, profile: any, se
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-        <DashboardStat label="Messages Sent Today" value={`${waStats?.sent || 0} / 3000`} icon={SendHorizontal} color="bg-royal-purple" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <DashboardStat label="Messages Sent Today" value={`${waStats?.sent || 0} / ${profile?.plan === 'free_plan' ? 100 : 3000}`} icon={SendHorizontal} color="bg-royal-purple" />
         <DashboardStat label="Total Contacts" value={stats.totalContacts.toLocaleString()} icon={Users} color="bg-blue-600" />
-        <DashboardStat label="Messages Sent" value={stats.messagesSent.toLocaleString()} icon={SendHorizontal} color="bg-royal-purple" />
         <DashboardStat label="Delivery Rate" value={stats.deliveryRate} icon={CheckCircle2} color="bg-emerald-600" />
-        <DashboardStat label="Active Campaigns" value={stats.activeCampaigns.toString()} icon={Zap} color="bg-amethyst" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
