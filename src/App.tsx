@@ -58,7 +58,8 @@ import {
   QrCode,
   Eye,
   EyeOff,
-  Info
+  Info,
+  LayoutTemplate
 } from 'lucide-react';
 import EmojiPicker, { Theme as EmojiTheme } from 'emoji-picker-react';
 import { motion, AnimatePresence, useScroll, useSpring, useTransform } from 'framer-motion';
@@ -744,11 +745,19 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [logoClicks, setLogoClicks] = useState(0);
 
+  const isAdmin = user?.email === 'prajwalnawale3040@gmail.com';
+  const getCurrentUserEmail = () => user?.email || user?.uid || 'anonymous';
+  const isExpired = profile?.trial_expiry && new Date(profile.trial_expiry) < new Date();
+
   useEffect(() => {
-    if (user && profile?.plan === 'pending' && view !== 'plans' && view !== 'settings') {
-      setView('plans');
+    if (user && profile) {
+      if ((profile.plan === 'pending' || isExpired) && view !== 'plans' && view !== 'settings') {
+        setView('plans');
+      } else if (profile.plan !== 'pending' && !isExpired && view === 'landing') {
+        setView('dashboard');
+      }
     }
-  }, [user, profile, view]);
+  }, [user, profile, view, isExpired]);
 
   useEffect(() => {
     localStorage.setItem('techtaire_active_view', view);
@@ -767,10 +776,6 @@ export default function App() {
 
     return () => window.removeEventListener('error', handleGlobalError);
   }, []);
-
-  const isAdmin = user?.email === 'prajwalnawale3040@gmail.com';
-  const getCurrentUserEmail = () => user?.email || user?.uid || 'anonymous';
-  const isExpired = profile?.trial_expiry && new Date(profile.trial_expiry) < new Date();
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
@@ -3904,7 +3909,20 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
                   <Paperclip size={20} />
                   <input type="file" className="hidden" onChange={handleFileChange} accept="image/*,video/*" disabled={isExpired} />
                 </label>
-                <button disabled={isExpired} className="p-3 bg-white/5 rounded-xl text-soft-lavender/40 hover:text-white transition-colors disabled:opacity-50"><Smartphone size={20} /></button>
+                <button 
+                  onClick={() => {
+                    if (profile?.plan === 'yearly_plan') {
+                      setShowTemplates(true);
+                    } else {
+                      showNotify("Custom Templates are only available in the Yearly Plan.", "warning");
+                    }
+                  }}
+                  disabled={isExpired} 
+                  className="p-3 bg-white/5 rounded-xl text-soft-lavender/40 hover:text-white transition-colors disabled:opacity-50"
+                  title="Templates (Yearly Plan Only)"
+                >
+                  <LayoutTemplate size={20} />
+                </button>
               </div>
             <button 
               onClick={handleSend}
@@ -4433,7 +4451,7 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, setView, showNotif
       return;
     }
 
-    const codeRegex = /^TECH-[A-Z0-9]{4}$/i;
+    const codeRegex = /^TECH-[A-Z0-9]{4,10}$/i;
     if (!codeRegex.test(verificationCode)) {
       showNotify("Invalid code format. Expected format: TECH-XXXX", "error");
       return;
@@ -4602,16 +4620,34 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, setView, showNotif
         </div>
       </div>
 
-      <div className="glass-panel p-10 space-y-8">
+      <div className="glass-panel p-10 space-y-8 relative">
         <h3 className="text-xl font-black text-white tracking-tight">WhatsApp Connection</h3>
         <p className="text-soft-lavender/60 text-sm">
           Connect your WhatsApp account by scanning the QR code below.
         </p>
-        <WhatsAppConnect userId={user?.email || 'anonymous'} />
+        {profile?.plan === 'free_plan' ? (
+          <div className="p-8 border border-white/10 rounded-2xl bg-white/5 flex flex-col items-center justify-center text-center space-y-4">
+            <AlertCircle size={48} className="text-amber-500" />
+            <h4 className="text-lg font-bold text-white">Feature Not Available</h4>
+            <p className="text-soft-lavender/80">
+              This feature is not available in the Free Plan. Please use the UltraMsg configuration below or upgrade your plan.
+            </p>
+            <button onClick={() => setView('plans')} className="btn-primary mt-4">Upgrade Plan</button>
+          </div>
+        ) : (
+          <WhatsAppConnect userId={user?.email || 'anonymous'} />
+        )}
       </div>
 
       <div className="glass-panel p-10 space-y-8">
-        <h3 className="text-xl font-black text-white tracking-tight">WhatsApp Server Configuration</h3>
+        <div className="flex justify-between items-center">
+          <h3 className="text-xl font-black text-white tracking-tight">
+            {profile?.plan === 'free_plan' ? 'UltraMsg Configuration' : 'Backup UltraMsg Configuration'}
+          </h3>
+          {profile?.plan !== 'free_plan' && (
+            <span className="px-3 py-1 bg-white/10 rounded-full text-[10px] font-bold uppercase tracking-widest text-soft-lavender">Backup Option</span>
+          )}
+        </div>
         <div className="space-y-6">
           <div className="space-y-2">
             <label className="text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Server URL</label>
@@ -4634,7 +4670,9 @@ function SettingsView({ user, profile, onUpdate, onOpenModal, setView, showNotif
           
           <div className="p-6 bg-white/5 rounded-2xl border border-white/10">
             <p className="text-sm text-soft-lavender/80">
-              WhatsApp connection is managed from the dashboard. Changing the server URL will reload the page.
+              {profile?.plan === 'free_plan' 
+                ? "Configure your UltraMsg instance URL here to send messages."
+                : "If the primary WhatsApp connection fails, you can configure an UltraMsg instance URL here as a backup."}
             </p>
           </div>
         </div>
