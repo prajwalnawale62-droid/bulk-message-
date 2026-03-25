@@ -3201,6 +3201,7 @@ function ContactsView({ user, showNotify }: { user: any, showNotify: (m: string,
               <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Name</th>
               <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Number</th>
               <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Batch/Course</th>
+              <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Messages</th>
               <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest">Status</th>
               <th className="px-6 py-4 text-xs font-black text-soft-lavender/40 uppercase tracking-widest text-right">Actions</th>
             </tr>
@@ -3208,14 +3209,14 @@ function ContactsView({ user, showNotify }: { user: any, showNotify: (m: string,
           <tbody className="divide-y divide-white/5">
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-6 py-20 text-center">
+                <td colSpan={6} className="px-6 py-20 text-center">
                   <RefreshCw className="animate-spin text-amethyst mx-auto mb-4" size={32} />
                   <p className="text-soft-lavender/40">Loading contacts...</p>
                 </td>
               </tr>
             ) : filteredContacts.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-6 py-20 text-center text-soft-lavender/40">
+                <td colSpan={6} className="px-6 py-20 text-center text-soft-lavender/40">
                   No contacts found.
                 </td>
               </tr>
@@ -3229,6 +3230,9 @@ function ContactsView({ user, showNotify }: { user: any, showNotify: (m: string,
                   <td className="px-6 py-4">
                     <div className="text-sm text-soft-lavender/80">{contact.course}</div>
                     <div className="text-xs text-soft-lavender/40">{contact.batch}</div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="font-bold text-amethyst">{contact.message_count || 0}</div>
                   </td>
                   <td className="px-6 py-4">
                     <span className="px-2 py-1 bg-emerald-500/10 text-emerald-400 text-[10px] font-black rounded-full uppercase">Active</span>
@@ -3637,10 +3641,43 @@ function MessagingView({ profile, user, showNotify, isWhatsappConnected }: { pro
         joinRoom(user.email);
         const socket = getSocket();
         
-        socket?.on('message_sent', (data: any) => {
+        socket?.on('message_sent', async (data: any) => {
           setSendingProgress(`Sent ${data.sent} of ${data.total} messages...`);
           if (data.status === 'sent') {
             showNotify(`Message sent to ${data.number} ✅`, "success");
+            
+            // Browser Notification
+            if ("Notification" in window) {
+              if (Notification.permission === "granted") {
+                new Notification("Message Sent ✅", { body: `Successfully sent to ${data.number}` });
+              } else if (Notification.permission !== "denied") {
+                Notification.requestPermission().then(permission => {
+                  if (permission === "granted") {
+                    new Notification("Message Sent ✅", { body: `Successfully sent to ${data.number}` });
+                  }
+                });
+              }
+            }
+            
+            // Update message count for the contact
+            try {
+              const { data: contactData } = await supabase
+                .from('contacts')
+                .select('message_count')
+                .eq('user_id', user.id)
+                .eq('whatsapp_number', data.number)
+                .single();
+                
+              if (contactData) {
+                await supabase
+                  .from('contacts')
+                  .update({ message_count: (contactData.message_count || 0) + 1 })
+                  .eq('user_id', user.id)
+                  .eq('whatsapp_number', data.number);
+              }
+            } catch (err) {
+              console.error("Failed to update message count", err);
+            }
           } else {
             showNotify(`Failed to send to ${data.number}: ${data.error} ❌`, "error");
           }
