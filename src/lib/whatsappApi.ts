@@ -1,12 +1,12 @@
 import axios from 'axios';
 
+const RAILWAY_URL = 'https://techtaire1-production.up.railway.app';
+
 export function getBaseUrl() {
-  if (typeof window === 'undefined') return '/api/whatsapp-server';
+  if (typeof window === 'undefined') return RAILWAY_URL;
   const stored = localStorage.getItem('whatsapp_server_url');
-  if (stored && stored.startsWith('http')) {
-    return stored.replace(/\/$/, '');
-  }
-  return '/api/whatsapp-server';
+  if (stored && stored.startsWith('http')) return stored.replace(/\/$/, '');
+  return RAILWAY_URL;
 }
 
 export async function startSession(userId: string) {
@@ -27,7 +27,9 @@ export async function startSession(userId: string) {
 export async function sendMessages(userId: string, messages: {number: string, message: string}[], attachmentUrl?: string | null) {
   const BASE_URL = getBaseUrl();
   const payload: any = { userId, messages };
-  if (attachmentUrl) payload.mediaUrl = attachmentUrl;
+  if (attachmentUrl) {
+    payload.mediaUrl = attachmentUrl;
+  }
   try {
     const response = await axios.post(`${BASE_URL}/messages/send`, payload, {
       headers: { 'Content-Type': 'application/json' }
@@ -45,7 +47,9 @@ export async function getStats(userId: string) {
     const response = await axios.get(`${BASE_URL}/messages/stats/${encodeURIComponent(userId)}`);
     return response.data;
   } catch (error: any) {
-    if (error.response?.status === 404) return { sent: 0, delivered: 0, failed: 0 };
+    if (error.response?.status === 404) {
+      return { sent: 0, delivered: 0, failed: 0 };
+    }
     console.error('Error getting stats:', error.response?.data || error.message);
     return { sent: 0, delivered: 0, failed: 0 };
   }
@@ -57,7 +61,9 @@ export async function getStatus(userId: string) {
     const response = await axios.get(`${BASE_URL}/session/status/${encodeURIComponent(userId)}`);
     return response.data.status;
   } catch (error: any) {
-    if (error.response?.status === 404) return 'disconnected';
+    if (error.response?.status === 404) {
+      return 'disconnected';
+    }
     console.error('Error getting status:', error.response?.data || error.message);
     return 'error';
   }
